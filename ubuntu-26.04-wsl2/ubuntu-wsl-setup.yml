@@ -1,0 +1,640 @@
+- name: Configuração DevOps/SRE Ubuntu 26.04 WSL2 com Docker Engine
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+
+  vars:
+    ansible_become_flags: "-H -S"
+    ubuntu_version: "{{ ansible_facts['distribution_version'] }}"
+    ubuntu_codename: "{{ ansible_facts['distribution_release'] }}"
+    keyrings_dir: /etc/apt/keyrings
+    fuse_package: libfuse2t64
+
+    target_user: >-
+      {{
+        ansible_facts['env']['SUDO_USER']
+        | default(ansible_facts['user_id'], true)
+      }}
+    target_home: "/home/{{ target_user }}"
+
+    is_wsl: >-
+      {{
+        (
+          ansible_facts.virtualization_type | default('') | lower == 'wsl'
+        )
+        or
+        (
+          ansible_facts.kernel | default('') | lower is search('microsoft')
+        )
+      }}
+
+    base_packages:
+      - apt-transport-https
+      - ca-certificates
+      - lsb-release
+      - software-properties-common
+      - gpg
+      - build-essential
+      - zsh
+      - dbus-user-session
+      - uidmap
+
+    common_util_packages:
+      - bash-completion
+      - bat
+      - btop
+      - command-not-found
+      - curl
+      - dnsutils
+      - fd-find
+      - fzf
+      - git
+      - glances
+      - htop
+      - httpie
+      - iftop
+      - iotop
+      - iputils-ping
+      - jq
+      - "{{ fuse_package }}"
+      - mtr
+      - mysql-client
+      - ncdu
+      - fastfetch
+      - net-tools
+      - nmap
+      - nodejs
+      - npm
+      - openssh-client
+      - plocate
+      - ripgrep
+      - rsync
+      - silversearcher-ag
+      - speedtest-cli
+      - ssh
+      - tmux
+      - traceroute
+      - tree
+      - unzip
+      - util-linux
+      - vim
+      - wget
+      - whois
+      - xclip
+      - xdg-utils
+      - zip
+      - nala
+      - postgresql-client
+
+  pre_tasks:
+    - name: Display detected distribution details
+      ansible.builtin.debug:
+        msg:
+          - "Distribution: {{ ansible_facts['distribution'] | default('N/A') }}"
+          - "Version: {{ ubuntu_version }}"
+          - "Codename: {{ ubuntu_codename }}"
+          - "Is WSL: {{ is_wsl }}"
+
+    - name: Validate Ubuntu 26.04 no WSL2
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ubuntu_version is match('^26\.04')
+          - is_wsl
+        fail_msg: "Este playbook é apenas para Ubuntu 26.04 no WSL2. Detectado: {{ ansible_facts['distribution'] | default('') }} {{ ubuntu_version | default('') }}"
+
+    - name: Ensure keyrings directory exists
+      ansible.builtin.file:
+        path: "{{ keyrings_dir }}"
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Garantir que o diretório bin local do usuário existe
+      ansible.builtin.file:
+        path: "{{ target_home }}/.local/bin"
+        state: directory
+        mode: "0755"
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+
+    - name: Ensure Universe repository is enabled
+      ansible.builtin.command: add-apt-repository universe -y
+      register: universe_repo
+      changed_when: "'already enabled' not in (universe_repo.stdout | default(''))"
+      failed_when: false
+      become: true
+
+  tasks:
+    - name: Provisionamento em nível de sistema
+      become: true
+      block:
+        - name: Instalar pacotes base e utilitários
+          ansible.builtin.apt:
+            name: "{{ base_packages + common_util_packages }}"
+            state: present
+            update_cache: true
+
+        - name: Atualizar todos os pacotes do sistema
+          ansible.builtin.apt:
+            upgrade: dist
+
+        - name: Instalar yq
+          ansible.builtin.get_url:
+            url: https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            dest: /usr/local/bin/yq
+            mode: "0755"
+
+        - name: Instalar ou atualizar Rclone
+          block:
+            - name: Baixar pacote do Rclone
+              ansible.builtin.get_url:
+                url: https://downloads.rclone.org/rclone-current-linux-amd64.deb
+                dest: /tmp/rclone.deb
+
+            - name: Instalar pacote do Rclone
+              ansible.builtin.apt:
+                deb: /tmp/rclone.deb
+
+          always:
+            - name: Remove temporary package do Rclone
+              ansible.builtin.file:
+                path: /tmp/rclone.deb
+                state: absent
+
+        - name: Instalar Azure CLI
+          ansible.builtin.shell: curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+          args:
+            creates: /usr/bin/az
+
+        - name: Instalar kubelogin via Azure CLI
+          ansible.builtin.command: >
+            az aks install-cli
+            --kubelogin-install-location /usr/local/bin/kubelogin
+          args:
+            creates: /usr/local/bin/kubelogin
+
+        - name: Instalar AWS CLI v2
+          block:
+            - name: Baixar arquivo compactado do AWS CLI
+              ansible.builtin.get_url:
+                url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+                dest: /tmp/awscliv2.zip
+
+            - name: Extrair arquivo compactado do AWS CLI
+              ansible.builtin.unarchive:
+                src: /tmp/awscliv2.zip
+                dest: /tmp
+                remote_src: true
+
+            - name: Instalar AWS CLI
+              ansible.builtin.command: /tmp/aws/install --update
+              args:
+                creates: /usr/local/bin/aws
+
+          always:
+            - name: Remove temporary files do AWS CLI
+              ansible.builtin.file:
+                path: "{{ item }}"
+                state: absent
+              loop:
+                - /tmp/awscliv2.zip
+                - /tmp/aws
+
+        - name: Configure repository Microsoft e instalar PowerShell
+          block:
+            - name: Baixar chave da Microsoft
+              ansible.builtin.get_url:
+                url: https://packages.microsoft.com/keys/microsoft.asc
+                dest: "{{ keyrings_dir }}/microsoft.asc"
+                mode: "0644"
+
+            - name: Converter chave da Microsoft para o formato gpg
+              ansible.builtin.command: >
+                gpg --dearmor
+                --yes
+                --output {{ keyrings_dir }}/microsoft.gpg
+                {{ keyrings_dir }}/microsoft.asc
+              args:
+                creates: "{{ keyrings_dir }}/microsoft.gpg"
+
+            - name: Add repository da Microsoft
+              ansible.builtin.deb822_repository:
+                name: microsoft-prod
+                types: deb
+                uris: https://packages.microsoft.com/ubuntu/24.04/prod
+                suites: noble
+                components: main
+                signed_by: "{{ keyrings_dir }}/microsoft.gpg"
+                architectures: amd64
+                state: present
+
+            - name: Instalar PowerShell
+              ansible.builtin.apt:
+                name: powershell
+                state: present
+                update_cache: true
+
+        - name: Configure repository HashiCorp e instalar Terraform
+          block:
+            - name: Baixar chave da HashiCorp
+              ansible.builtin.get_url:
+                url: https://apt.releases.hashicorp.com/gpg
+                dest: "{{ keyrings_dir }}/hashicorp-archive-keyring.asc"
+                mode: "0644"
+
+            - name: Converter chave da HashiCorp para o formato gpg
+              ansible.builtin.command: >
+                gpg --dearmor
+                --yes
+                --output {{ keyrings_dir }}/hashicorp-archive-keyring.gpg
+                {{ keyrings_dir }}/hashicorp-archive-keyring.asc
+              args:
+                creates: "{{ keyrings_dir }}/hashicorp-archive-keyring.gpg"
+
+            - name: Add repository da HashiCorp
+              ansible.builtin.deb822_repository:
+                name: hashicorp
+                types: deb
+                uris: https://apt.releases.hashicorp.com
+                suites: noble
+                components: main
+                signed_by: "{{ keyrings_dir }}/hashicorp-archive-keyring.gpg"
+                state: present
+
+            - name: Instalar Terraform
+              ansible.builtin.apt:
+                name: terraform
+                state: present
+                update_cache: true
+
+        - name: Configure repository Kubernetes e instalar kubectl
+          block:
+            - name: Download repository key Kubernetes
+              ansible.builtin.get_url:
+                url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
+                dest: "{{ keyrings_dir }}/kubernetes-apt-keyring.asc"
+                mode: "0644"
+
+            - name: Converter chave do Kubernetes para o formato gpg
+              ansible.builtin.command: >
+                gpg --dearmor
+                --yes
+                --output {{ keyrings_dir }}/kubernetes-apt-keyring.gpg
+                {{ keyrings_dir }}/kubernetes-apt-keyring.asc
+              args:
+                creates: "{{ keyrings_dir }}/kubernetes-apt-keyring.gpg"
+
+            - name: Add repository do Kubernetes
+              ansible.builtin.deb822_repository:
+                name: kubernetes
+                types: deb
+                uris: https://pkgs.k8s.io/core:/stable:/v1.31/deb/
+                suites: /
+                signed_by: "{{ keyrings_dir }}/kubernetes-apt-keyring.gpg"
+                state: present
+
+            - name: Instalar kubectl
+              ansible.builtin.apt:
+                name: kubectl
+                state: present
+                update_cache: true
+
+        - name: Baixar pacote do k9s
+          ansible.builtin.get_url:
+            url: https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb
+            dest: /tmp/k9s_linux_amd64.deb
+            mode: "0644"
+
+        - name: Instalar k9s
+          ansible.builtin.apt:
+            deb: /tmp/k9s_linux_amd64.deb
+            state: present
+
+        - name: Instalar ferramentas auxiliares do Kubernetes
+          block:
+            - name: Instalar Kind
+              ansible.builtin.get_url:
+                url: https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+                dest: /usr/local/bin/kind
+                mode: "0755"
+
+            - name: Clone repository do kubectx
+              ansible.builtin.git:
+                repo: https://github.com/ahmetb/kubectx.git
+                dest: /opt/kubectx
+                version: master
+
+            - name: Criar link simbólico para o kubectx
+              ansible.builtin.file:
+                src: /opt/kubectx/kubectx
+                dest: /usr/local/bin/kubectx
+                state: link
+
+            - name: Criar link simbólico para o kubens
+              ansible.builtin.file:
+                src: /opt/kubectx/kubens
+                dest: /usr/local/bin/kubens
+                state: link
+
+        - name: Instalar Vagrant
+          block:
+            - name: Verificar se o Vagrant está instalado
+              ansible.builtin.command: dpkg-query -W vagrant
+              register: vagrant_check
+              changed_when: false
+              failed_when: false
+
+            - name: Baixar pacote do Vagrant
+              ansible.builtin.get_url:
+                url: https://releases.hashicorp.com/vagrant/2.4.1/vagrant_2.4.1-1_amd64.deb
+                dest: /tmp/vagrant.deb
+              when: vagrant_check.rc != 0
+
+            - name: Instalar Vagrant package
+              ansible.builtin.apt:
+                deb: /tmp/vagrant.deb
+              when: vagrant_check.rc != 0
+
+          always:
+            - name: Remove temporary package do Vagrant
+              ansible.builtin.file:
+                path: /tmp/vagrant.deb
+                state: absent
+
+        - name: Instalar Helm, Flux e Argo CD CLI
+          block:
+            - name: Instalar Helm
+              ansible.builtin.shell: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+              args:
+                creates: /usr/local/bin/helm
+
+            - name: Instalar Flux CLI
+              ansible.builtin.shell: curl -fsSL https://fluxcd.io/install.sh | bash
+              args:
+                creates: /usr/local/bin/flux
+
+            - name: Instalar Argo CD CLI
+              ansible.builtin.get_url:
+                url: https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+                dest: /usr/local/bin/argocd
+                mode: "0755"
+
+        - name: Instalar Google Cloud CLI via Snap
+          community.general.snap:
+            name: google-cloud-cli
+            classic: true
+
+        - name: Configure repository MongoDB e instalar ferramentas
+          block:
+            - name: Baixar chave do MongoDB
+              ansible.builtin.get_url:
+                url: https://pgp.mongodb.com/server-8.0.asc
+                dest: "{{ keyrings_dir }}/mongodb-server-8.0.asc"
+                mode: "0644"
+
+            - name: Converter chave do MongoDB para o formato gpg
+              ansible.builtin.command: >
+                gpg --dearmor
+                --yes
+                --output {{ keyrings_dir }}/mongodb-server-8.0.gpg
+                {{ keyrings_dir }}/mongodb-server-8.0.asc
+              args:
+                creates: "{{ keyrings_dir }}/mongodb-server-8.0.gpg"
+
+            - name: Add repository do MongoDB
+              ansible.builtin.deb822_repository:
+                name: mongodb-org-8.0
+                types: deb
+                uris: https://repo.mongodb.org/apt/ubuntu
+                suites: noble/mongodb-org/8.0
+                components: multiverse
+                signed_by: "{{ keyrings_dir }}/mongodb-server-8.0.gpg"
+                architectures: amd64
+                state: present
+
+            - name: Instalar ferramentas do MongoDB e mongosh
+              ansible.builtin.apt:
+                name:
+                  - mongodb-database-tools
+                  - mongodb-mongosh
+                state: present
+                update_cache: true
+
+        - name: Configure repository Docker e instalar Docker Engine
+          block:
+            - name: Baixar chave do Docker
+              ansible.builtin.get_url:
+                url: https://download.docker.com/linux/ubuntu/gpg
+                dest: "{{ keyrings_dir }}/docker.asc"
+                mode: "0644"
+
+            - name: Converter chave do Docker para o formato gpg
+              ansible.builtin.command: >
+                gpg --dearmor
+                --yes
+                --output {{ keyrings_dir }}/docker.gpg
+                {{ keyrings_dir }}/docker.asc
+              args:
+                creates: "{{ keyrings_dir }}/docker.gpg"
+
+            - name: Add repository do Docker
+              ansible.builtin.deb822_repository:
+                name: docker
+                types: deb
+                uris: https://download.docker.com/linux/ubuntu
+                suites: noble
+                components: stable
+                signed_by: "{{ keyrings_dir }}/docker.gpg"
+                architectures: amd64
+                state: present
+
+            - name: Instalar pacotes do Docker Engine
+              ansible.builtin.apt:
+                name:
+                  - docker-ce
+                  - docker-ce-cli
+                  - containerd.io
+                  - docker-compose-plugin
+                  - docker-buildx-plugin
+                state: present
+                update_cache: true
+
+            - name: Adicionar usuário destino ao grupo docker
+              ansible.builtin.user:
+                name: "{{ target_user }}"
+                groups: docker
+                append: true
+
+        - name: Configure repository GitHub CLI e instalar gh
+          block:
+            - name: Baixar chave do GitHub CLI
+              ansible.builtin.get_url:
+                url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+                dest: "{{ keyrings_dir }}/githubcli-archive-keyring.gpg"
+                mode: "0644"
+
+            - name: Add repository do GitHub CLI
+              ansible.builtin.deb822_repository:
+                name: github-cli
+                types: deb
+                uris: https://cli.github.com/packages
+                suites: stable
+                components: main
+                signed_by: "{{ keyrings_dir }}/githubcli-archive-keyring.gpg"
+                architectures: amd64
+                state: present
+
+            - name: Instalar GitHub CLI
+              ansible.builtin.apt:
+                name: gh
+                state: present
+                update_cache: true
+
+        - name: Criar /etc/wsl.conf com systemd habilitado
+          ansible.builtin.copy:
+            dest: /etc/wsl.conf
+            mode: "0644"
+            content: |
+              [boot]
+              systemd=true
+
+    - name: Instalar Oh My Zsh
+      ansible.builtin.shell: |
+        CHSH=no RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" '' --unattended
+      args:
+        creates: "{{ target_home }}/.oh-my-zsh"
+
+    - name: Clonar tema Powerlevel10k
+      ansible.builtin.git:
+        repo: https://github.com/romkatv/powerlevel10k.git
+        dest: "{{ target_home }}/.oh-my-zsh/custom/themes/powerlevel10k"
+        version: master
+        update: false
+
+    - name: Clonar plugins do zsh
+      ansible.builtin.git:
+        repo: "{{ item.repo }}"
+        dest: "{{ item.dest }}"
+        version: master
+        update: false
+      loop:
+        - repo: https://github.com/zsh-users/zsh-syntax-highlighting.git
+          dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+        - repo: https://github.com/zsh-users/zsh-autosuggestions.git
+          dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+        - repo: https://github.com/zsh-users/zsh-completions.git
+          dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-completions"
+
+    - name: Implantar arquivo .zshrc
+      ansible.builtin.copy:
+        dest: "{{ target_home }}/.zshrc"
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: "0644"
+        content: |
+          export ZSH="$HOME/.oh-my-zsh"
+          ZSH_THEME="powerlevel10k/powerlevel10k"
+          plugins=(git docker docker-compose terraform fzf zsh-syntax-highlighting zsh-autosuggestions zsh-completions command-not-found)
+          source $ZSH/oh-my-zsh.sh
+
+          export EDITOR=vim
+          export PATH="$HOME/.local/bin:$PATH"
+
+          alias ..='cd ..'
+          alias ...='cd ../..'
+          alias l='ls -CF'
+          alias ls='ls -lh --color=auto'
+          alias la='ls -lah --color=auto'
+          alias cls='clear'
+          alias c='clear'
+          alias mkdir='mkdir -pv'
+          alias cp='cp -iv'
+          alias mv='mv -iv'
+
+          alias df='df -h'
+          alias du='du -sh * | sort -h'
+          alias myip='curl -s ifconfig.me && echo'
+          alias ports='ss -tulpen'
+          alias ping='ping -c 5'
+          alias h='history'
+          alias j='jobs -l'
+
+          alias apt-update='sudo apt update -y'
+          alias apt-upgrade='sudo apt upgrade -y'
+          alias apt-remove='sudo apt autoremove -y'
+          alias apt-search='apt search'
+          alias apt-install='sudo apt install -y'
+          alias snap-install='sudo snap install'
+          alias snap-remove='sudo snap remove'
+          alias snap-refresh='sudo snap refresh'
+
+          alias g='git'
+          alias gst='git status'
+          alias ga='git add'
+          alias gc='git commit -m'
+          alias gp='git push'
+          alias gl='git pull'
+          alias gco='git checkout'
+          alias gb='git branch'
+          alias gcb='git checkout -b'
+
+          alias up='docker compose up -d'
+          alias down='docker compose down'
+          alias dps='docker ps'
+          alias dpa='docker ps -a'
+          alias di='docker images'
+          alias drm='docker rm'
+          alias drmi='docker rmi'
+          alias dlogs='docker logs -f'
+          alias dexec='docker exec -it'
+          alias dbuild='docker build -t'
+
+          alias k='kubectl'
+          alias kgp='kubectl get pods'
+          alias kgs='kubectl get svc'
+          alias kga='kubectl get all'
+          alias kctx='kubectl config use-context'
+          alias kctxs='kubectl config get-contexts'
+          alias kctxc='kubectl config current-context'
+          alias kget='kubectl get'
+          alias kdel='kubectl delete'
+          alias klogs='kubectl logs -f'
+          alias kapply='kubectl apply -f'
+
+          alias tf='terraform'
+          alias ansible-env='source pyenv/bin/activate'
+
+          dbash() { docker exec -it "$1" /bin/bash; }
+          dsh() { docker exec -it "$1" /bin/sh; }
+          kexec() { kubectl exec -it "$@"; }
+          kdb() { kubectl exec -it "$1" -- /bin/bash; }
+          ksh() { kubectl exec -it "$1" -- /bin/sh; }
+          azlogin() { az login --use-device-code "$@"; }
+
+          [[ -f ~/.profile ]] && source ~/.profile
+
+    - name: Tarefas de pós-configuração do sistema
+      become: true
+      block:
+        - name: Definir zsh como shell padrão
+          ansible.builtin.user:
+            name: "{{ target_user }}"
+            shell: /usr/bin/zsh
+
+        - name: Atualizar banco de dados do locate
+          ansible.builtin.command: updatedb
+          changed_when: false
+          failed_when: false
+
+        - name: Limpar pacotes desnecessários
+          ansible.builtin.apt:
+            autoclean: true
+            autoremove: true
+
+    - name: Mensagem final
+      ansible.builtin.debug:
+        msg:
+          - "Obrigado por utilizar este script de configuração!"
+          - "Script desenvolvido por Aleon Chagas"

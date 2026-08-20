@@ -1,0 +1,114 @@
+# =============================================================================
+# .gitignore - Workstation-Setup
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Ansible / ansible-lint
+# -----------------------------------------------------------------------------
+.cache/
+.ansible/
+.ansible_collections/
+*.retry
+roles/
+collections/
+molecule/.cache/
+
+# ansible-lint intermediate files
+.ansible-lint-cache/
+
+# -----------------------------------------------------------------------------
+# Python (used by ansible-lint, molecule, pip)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.nox/
+*.egg
+
+# -----------------------------------------------------------------------------
+# Editor / IDE
+# -----------------------------------------------------------------------------
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains (PyCharm, Rider, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------------------------------------------------------
+# Operating Systems
+# -----------------------------------------------------------------------------
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+.directory
+.Trash-*
+
+# -----------------------------------------------------------------------------
+# Logs & temporary files
+# -----------------------------------------------------------------------------
+*.log
+*.tmp
+*.bak
+*.orig
+*.patch
+
+# PowerShell transcript logs
+*_transcript.txt
+transcript-*.txt
+
+# -----------------------------------------------------------------------------
+# Secrets & sensitive files (never commit these)
+# -----------------------------------------------------------------------------
+*.env
+.env
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+vault_password*
+.vault_pass*

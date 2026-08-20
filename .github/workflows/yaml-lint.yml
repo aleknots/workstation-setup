@@ -1,0 +1,24 @@
+name: YAML Lint & Syntax Validation
+
+on:
+  push:
+    branches: [ main, dev, 'feature/**', 'bugfix/**', 'release/**', 'hotfix/**' ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  yaml-lint:
+    name: Validate YAML Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run yamllint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_data: |
+            extends: relaxed
+            rules:
+              line-length: disable
+              document-start: disable
