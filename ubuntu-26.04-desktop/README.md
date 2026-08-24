@@ -1,39 +1,39 @@
-# DevOps/SRE Workstation Setup for Ubuntu 26.04 LTS Desktop
+# Configuração de Workstation DevOps/SRE para Ubuntu 26.04 LTS Desktop
 
-Ansible playbook to provision an Ubuntu 26.04 LTS Desktop environment tailored for DevOps, SRE, cloud engineering, automation, containerization, virtualization, and desktop productivity.
+Playbook do Ansible para provisionar um ambiente Ubuntu 26.04 LTS Desktop sob medida para DevOps, SRE, engenharia de nuvem, automação, conteinerização, virtualização e produtividade no desktop.
 
-This playbook is designed for local installation on native Ubuntu Desktop and includes terminal utilities, third-party deb822 repositories, Docker Engine, Kubernetes tools, cloud CLIs, Terraform, PowerShell, MongoDB tools, desktop applications, and a Zsh environment with Oh My Zsh and Powerlevel10k.
+Este playbook foi projetado para instalação local em desktop Ubuntu nativo e inclui utilitários de terminal, repositórios deb822 de terceiros, Docker Engine, ferramentas de Kubernetes, CLIs de nuvem, Terraform, PowerShell, ferramentas do MongoDB, aplicações de desktop e um ambiente Zsh com Oh My Zsh e Powerlevel10k.
 
-## Installed Toolset
+## Conjunto de Ferramentas Instaladas
 
-### System Core & Utilities
-- Essential system packages & network troubleshooting tools
+### Núcleo do Sistema & Utilitários
+- Pacotes essenciais do sistema & ferramentas de diagnóstico de rede
 - `git`, `curl`, `wget`, `jq`, `tmux`, `vim`, `ripgrep`, `htop`, `btop`, `fd`, `fzf`, `tree`, `unzip`, `zip`, `traceroute`, `mtr`, `nmap`, `fastfetch`
 
-### DevOps/SRE & Cloud Engineering
+### DevOps/SRE & Engenharia de Nuvem
 - Terraform, PowerShell, Azure CLI, `kubelogin`, AWS CLI v2, `yq`, Rclone, MongoDB Database Tools, `mongosh`
-- Docker Engine, Docker Compose Plugin, Docker Buildx
+- Docker Engine, Plugin Docker Compose, Docker Buildx
 - `kubectl`, `k9s`, `kubectx`, `kubens`, `kind`, Vagrant, Helm, Flux CLI, Argo CD CLI, GitHub CLI, Google Cloud CLI
 
-### Shell Environment
+### Ambiente Shell
 - Zsh, Oh My Zsh, Powerlevel10k
 - Plugins: `git`, `docker`, `docker-compose`, `terraform`, `fzf`, `zsh-syntax-highlighting`, `zsh-autosuggestions`, `zsh-completions`, `command-not-found`
 
-### Virtualization & Desktop Tools
-- KVM stack, `libvirt`, `virt-manager`
+### Virtualização & Ferramentas de Desktop
+- Stack KVM, `libvirt`, `virt-manager`
 - `gnome-tweaks`, `gnome-shell-extension-manager`, `chrome-gnome-shell`, `tilix`, `flameshot`, `obs-studio`, `vlc`
-- Fira Code, Powerline, and Meslo Nerd Fonts
+- Fontes Fira Code, Powerline e Meslo Nerd Fonts
 
-### Desktop Applications
+### Aplicações de Desktop
 - Google Chrome, Visual Studio Code, Sublime Text, Remote Desktop Manager, Rclone Browser, Postman, Notion Desktop, Azure Storage Explorer
 
-## Requirements
+## Requisitos
 
-- Ubuntu 26.04 LTS Desktop (bare-metal or local VM)
-- `sudo` privileges & active internet connection
-- Ansible & `community.general` collection installed
+- Ubuntu 26.04 LTS Desktop (bare-metal ou VM local)
+- Privilégios de `sudo` & conexão ativa com a internet
+- Ansible & coleção `community.general` instalados
 
-## Installing Ansible
+## Instalando o Ansible
 
 ```bash
 sudo apt update
@@ -46,43 +46,43 @@ ansible-galaxy collection install community.general
 ansible --version
 ```
 
-## How to Run
+## Como Executar
 
-Execute inside Ubuntu 26.04 Desktop:
+Execute dentro do Ubuntu 26.04 Desktop:
 
 ```bash
 sudo ~/pyenv/bin/ansible-playbook ubuntu-desktop-setup.yml
 ```
 
-or using `-K` with prompt:
+ou utilizando `-K` com prompt de senha:
 
 ```bash
 ansible-playbook ubuntu-desktop-setup.yml -K
 ```
 
-## Execution Steps
+## Etapas de Execução
 
-The playbook:
-1. Validates that host runs Ubuntu 26.04 Desktop (not WSL2).
-2. Sets up keyrings, directories, and preserves core GNOME session packages.
-3. Installs base system tools, terminal utilities, cloud CLIs, Docker Engine, and K8s tools.
-4. Provisions desktop applications (VS Code, Chrome, Remote Desktop Manager) and KVM virtualization.
-5. Configures Zsh, Oh My Zsh, Powerlevel10k theme, plugins, and custom shell aliases.
+O playbook:
+1. Valida se o sistema hospedeiro roda Ubuntu 26.04 Desktop (não WSL2).
+2. Configura keyrings, diretórios e preserva pacotes essenciais da sessão GNOME.
+3. Instala ferramentas base do sistema, utilitários de terminal, CLIs de nuvem, Docker Engine e ferramentas de K8s.
+4. Provisiona aplicações de desktop (VS Code, Chrome, Remote Desktop Manager) e virtualização KVM.
+5. Configura Zsh, Oh My Zsh, tema Powerlevel10k, plugins e aliases personalizados do shell.
 
-## Post-Installation
+## Pós-Instalação
 
-### Re-log Session
-After completion, log out and log back in to apply:
-- `docker`, `kvm`, and `libvirt` user group memberships.
-- Default `zsh` shell.
+### Reiniciar Sessão do Usuário
+Após a conclusão, faça logout e login novamente para aplicar:
+- Permissões nos grupos de usuário `docker`, `kvm` e `libvirt`.
+- Shell padrão `zsh`.
 
-### Configure Terminal Fonts
-Set your terminal font to:
+### Configurar Fontes do Terminal
+Defina a fonte do seu terminal para:
 ```text
 MesloLGS NF Regular
 ```
 
-### Validate CLI Tooling
+### Validar Ferramentas CLI
 ```bash
 terraform version
 pwsh

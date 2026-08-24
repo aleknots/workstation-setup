@@ -1,43 +1,43 @@
-# DevOps/SRE Workstation Setup for Ubuntu 26.04 on WSL2 with Native Docker Engine
+# Configuração de Workstation DevOps/SRE para Ubuntu 26.04 no WSL2 com Docker Engine Nativo
 
-Ansible playbook to provision an Ubuntu 26.04 LTS distribution running inside WSL2, tailored for DevOps, SRE, automation, and terminal-centric workflows, featuring native Docker Engine running directly inside Linux without requiring Docker Desktop on Windows.
+Playbook do Ansible para provisionar uma distribuição Ubuntu 26.04 LTS executando dentro do WSL2, sob medida para fluxos de trabalho de DevOps, SRE, automação e focados em terminal, contando com Docker Engine nativo rodando diretamente dentro do Linux sem necessitar do Docker Desktop no Windows.
 
-## Purpose
+## Objetivo
 
-Prepares a lightweight WSL2 development environment with:
-- Terminal utilities & network diagnostic tools
+Prepara um ambiente leve de desenvolvimento WSL2 com:
+- Utilitários de terminal & ferramentas de diagnóstico de rede
 - Terraform, PowerShell, MongoDB Database Tools
-- Zsh + Oh My Zsh + Powerlevel10k theme
-- Docker Engine running natively inside Ubuntu on WSL2
+- Zsh + Oh My Zsh + tema Powerlevel10k
+- Docker Engine executando nativamente dentro do Ubuntu no WSL2
 
-## Installed Toolset
+## Conjunto de Ferramentas Instaladas
 
-### System Core & Utilities
-- Essential system packages & network tools
+### Núcleo do Sistema & Utilitários
+- Pacotes essenciais do sistema & ferramentas de rede
 - `git`, `curl`, `wget`, `jq`, `tmux`, `vim`, `ripgrep`, `htop`, `btop`, `fd`, `fzf`, `tree`, `unzip`, `zip`, `traceroute`, `mtr`, `nmap`, `xclip`, `xdg-utils`, `fastfetch`
 
-### DevOps/SRE & Cloud Engineering
+### DevOps/SRE & Engenharia de Nuvem
 - AWS CLI v2, Azure CLI & `kubelogin`, Google Cloud CLI
 - Terraform, PowerShell, Vagrant, `yq`, Rclone
 - `kubectl`, `k9s`, `kind`, `kubectx`, `kubens`, Helm, Flux CLI, Argo CD CLI
 - MongoDB Database Tools, `mongosh`
 
-### Native Docker in WSL2
-- Docker Engine, Docker CLI, `containerd`, Docker Compose Plugin, Docker Buildx
-- `systemd` enabled in WSL via `/etc/wsl.conf`
+### Docker Nativo no WSL2
+- Docker Engine, Docker CLI, `containerd`, Plugin Docker Compose, Docker Buildx
+- `systemd` habilitado no WSL via `/etc/wsl.conf`
 
-### Shell Environment
+### Ambiente Shell
 - Zsh, Oh My Zsh, Powerlevel10k
 - Plugins: `git`, `docker`, `docker-compose`, `terraform`, `fzf`, `zsh-syntax-highlighting`, `zsh-autosuggestions`, `zsh-completions`, `command-not-found`
 
-## Requirements
+## Requisitos
 
-- Windows 11 with WSL2 enabled
-- Ubuntu 26.04 installed in WSL2
-- `sudo` access inside distribution & active internet connection
-- Ansible installed in WSL
+- Windows 11 com WSL2 habilitado
+- Ubuntu 26.04 instalado no WSL2
+- Acesso `sudo` dentro da distribuição & conexão ativa com a internet
+- Ansible instalado no WSL
 
-## Installing Ansible in WSL
+## Instalando Ansible no WSL
 
 ```bash
 sudo apt update
@@ -49,64 +49,64 @@ pip install ansible
 ansible --version
 ```
 
-## How to Run
+## Como Executar
 
-Execute inside Ubuntu distribution in WSL:
+Execute dentro da distribuição Ubuntu no WSL:
 
 ```bash
 sudo ~/pyenv/bin/ansible-playbook ubuntu-wsl-setup.yml
 ```
 
-or using `-K` with prompt:
+ou utilizando `-K` com prompt de senha:
 
 ```bash
 ansible-playbook ubuntu-wsl-setup.yml -K
 ```
 
-## Execution Steps
+## Etapas de Execução
 
-The playbook:
-1. Validates host system runs Ubuntu 26.04 on WSL2.
-2. Configures keyrings and deb822 repositories.
-3. Installs base utilities, cloud CLIs, K8s tools, and MongoDB tools.
-4. Installs Docker Engine inside WSL and adds user to `docker` group.
-5. Configures `/etc/wsl.conf` with `systemd=true`.
-6. Sets up Zsh, Oh My Zsh, Powerlevel10k, plugins, and sets default shell.
+O playbook:
+1. Valida se o sistema hospedeiro roda Ubuntu 26.04 no WSL2.
+2. Configura keyrings e repositórios deb822.
+3. Instala utilitários base, CLIs de nuvem, ferramentas de K8s e ferramentas do MongoDB.
+4. Instala o Docker Engine dentro do WSL e adiciona o usuário ao grupo `docker`.
+5. Configura `/etc/wsl.conf` com `systemd=true`.
+6. Configura Zsh, Oh My Zsh, Powerlevel10k, plugins e define o shell padrão.
 
-## Post-Installation
+## Pós-Instalação
 
-### Restart WSL Distribution
-Close terminal and execute in Windows PowerShell / CMD:
+### Reiniciar Distribuição WSL
+Feche o terminal e execute no Windows PowerShell / CMD:
 
 ```powershell
 wsl --shutdown
 ```
 
-Then reopen Ubuntu in WSL.
+Em seguida, reabra o Ubuntu no WSL.
 
-### Test Docker Engine
+### Testar Docker Engine
 ```bash
 docker version
 docker run hello-world
 ```
 
-### Verify Service Status
+### Verificar Status do Serviço
 ```bash
 systemctl status docker
 ```
 
-### Confirm Default Shell
+### Confirmar Shell Padrão
 ```bash
 echo $SHELL
 ```
 
-Expected output:
+Saída esperada:
 ```bash
 /usr/bin/zsh
 ```
 
-## Important Notes
+## Notas Importantes
 
-- Designed for Ubuntu 26.04 running on WSL2.
-- Uses native Docker Engine inside Linux without Docker Desktop on Windows.
-- Requires `systemd` enabled in WSL and a `wsl --shutdown` restart after completion.
+- Projetado para Ubuntu 26.04 rodando no WSL2.
+- Utiliza Docker Engine nativo dentro do Linux sem Docker Desktop no Windows.
+- Requer `systemd` habilitado no WSL e reinicialização via `wsl --shutdown` após a conclusão.

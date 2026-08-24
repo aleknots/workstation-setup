@@ -1,93 +1,93 @@
-# Initial Windows 11 Workstation Setup Script (DevOps / SRE)
+# Script de Configuração Inicial da Workstation Windows 11 (DevOps / SRE)
 
-## Overview
+## Visão Geral
 
-This PowerShell script automates the initial configuration of a fresh Windows 11 installation, preparing the system for SRE, DevOps, and cloud engineering workflows.
+Este script PowerShell automatiza a configuração inicial de uma instalação limpa do Windows 11, preparando o sistema para fluxos de trabalho de SRE, DevOps e engenharia de nuvem.
 
-Automation includes installing essential CLI tools, enabling Windows optional features, installing runtimes, development utilities, and productivity software via Chocolatey and winget.
+A automação inclui a instalação de ferramentas CLI essenciais, habilitação de recursos opcionais do Windows, instalação de runtimes, utilitários de desenvolvimento e softwares de produtividade via Chocolatey e winget.
 
-Designed to be executed immediately following Windows installation.
+Projetado para ser executado imediatamente após a instalação do Windows.
 
-## Requirements
+## Requisitos
 
-- Windows 11 Pro (recommended)
-- PowerShell executed as Administrator
-- Active internet connection
+- Windows 11 Pro (recomendado)
+- PowerShell executado como Administrador
+- Conexão ativa com a Internet
 
-> **IMPORTANT:** Before proceeding, verify Windows is fully updated. Install any pending Windows Update patches and **reboot your PC**. Running this script with pending system updates may cause installation failures.
+> **IMPORTANTE:** Antes de prosseguir, verifique se o Windows está totalmente atualizado. Instale todas as atualizações pendentes do Windows Update e **reinicie o seu PC**. Executar este script com atualizações pendentes do sistema pode causar falhas de instalação.
 
-### Execution Policy
+### Política de Execução (Execution Policy)
 
-Before running the script, enable PowerShell script execution:
+Antes de executar o script, habilite a execução de scripts no PowerShell:
 
 ```powershell
 Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
 ```
 
-To verify current execution policies:
+Para verificar as políticas de execução atuais:
 
 ```powershell
 Get-ExecutionPolicy -List
 ```
 
-## How to Run
+## Como Executar
 
-1. Download or clone this repository to a directory (e.g. `C:\Setup\workstation-setup`).
-2. Open PowerShell as Administrator.
-3. Navigate to `windows-11-pro` folder:
+1. Baixe ou clone este repositório para um diretório (ex: `C:\Setup\workstation-setup`).
+2. Abra o PowerShell como Administrador.
+3. Navegue até a pasta `windows-11-pro`:
 
 ```powershell
 cd C:\Setup\workstation-setup\windows-11-pro
 ```
 
-4. Unblock script if restricted by Windows Execution Policy:
+4. Desbloqueie o script caso esteja restrito pela Política de Execução do Windows:
 
 ```powershell
 Unblock-File -Path "C:\Setup\workstation-setup\windows-11-pro\windows-setup.ps1"
 ```
 
-5. Execute script:
+5. Execute o script:
 
 ```powershell
 .\windows-setup.ps1
 ```
 
-## Installed Components
+## Componentes Instalados
 
-### Windows Developer Features
-- Enables `End Task` in taskbar right-click context menu.
-- Enables `Sudo for Windows` inline mode when supported (Windows 11 24H2+).
+### Recursos de Desenvolvedor do Windows
+- Habilita `Finalizar Tarefa` no menu de contexto ao clicar com botão direito na barra de tarefas.
+- Habilita modo inline do `Sudo para Windows` quando suportado (Windows 11 24H2+).
 
-### Terminal Fonts
-- Installs `MesloLGS NF Regular` font for Oh My Posh icons and Nerd Fonts.
+### Fontes para Terminal
+- Instala a fonte `MesloLGS NF Regular` para ícones do Oh My Posh e Nerd Fonts.
 
-### Essential Tooling
+### Ferramentas Essenciais
 - PowerShell 7, Git, Terraform, Vagrant, Visual Studio Code
 
-### Cloud & DevOps Tools
+### Ferramentas de Nuvem & DevOps
 - Azure CLI, Azure PowerShell, AWS CLI, ArgoCD CLI, k9s, Helm, WSL2 + Ubuntu 24.04
 
-### Productivity & Utilities
+### Produtividade & Utilitários
 - Google Chrome, PowerToys, TreeSize Free, Sublime Text, oh-my-posh, WebView2 Runtime, Slack, Microsoft Teams, Zoom, Azure Storage Explorer, WhatsApp
 
-## WSL2 and Ubuntu 24.04 Setup
+## Configuração do WSL2 e Ubuntu 24.04
 
-1. After script completion, reboot Windows.
-2. Open Windows Terminal / PowerShell as Administrator.
-3. If WSL virtual features were enabled during initial run, install Ubuntu 24.04:
+1. Após a conclusão do script, reinicie o Windows.
+2. Abra o Windows Terminal / PowerShell como Administrador.
+3. Se os recursos virtuais do WSL foram habilitados durante a execução inicial, instale o Ubuntu 24.04:
 
 ```powershell
 wsl --install -d Ubuntu-24.04
 ```
 
-## Terminal Font Setup
+## Configuração de Fonte no Terminal
 
-Configure Windows Terminal settings to use installed font:
+Configure as opções do Windows Terminal para usar a fonte instalada:
 
 ```text
 MesloLGS NF
 ```
 
-## License
+## Licença
 
-Distributed under the [MIT License](../LICENSE).
+Distribuído sob a [Licença MIT](../LICENSE).

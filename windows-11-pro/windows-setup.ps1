@@ -1,32 +1,32 @@
 # =======================================================================
-#  INITIAL WINDOWS 11 WORKSTATION SETUP SCRIPT - SRE / DEVOPS
+#  SCRIPT DE CONFIGURAÇÃO INICIAL DA WORKSTATION WINDOWS 11 - SRE / DEVOPS
 # =======================================================================
 #
-#  OVERVIEW
+#  VISÃO GERAL
 # -----------------------------------------------------------------------
-#  This script automates initial setup of a clean Windows 11 installation:
+#  Este script automatiza a configuração inicial de uma instalação limpa do Windows 11:
 #
-#  - Essential tools and runtimes installation
-#  - Windows optional features enablement (WSL, Telnet, Virtual Machine Platform, Hyper-V)
-#  - Applications installation via Chocolatey and winget
+#  - Instalação de ferramentas e runtimes essenciais
+#  - Habilitação de recursos opcionais do Windows (WSL, Telnet, Plataforma de Máquina Virtual, Hyper-V)
+#  - Instalação de aplicações via Chocolatey e winget
 #
-#  Designed for execution immediately following OS installation.
+#  Projetado para execução imediatamente após a instalação do SO.
 #
-#  REQUIREMENTS
+#  REQUISITOS
 # -----------------------------------------------------------------------
-#  - Windows 11 Pro (recommended)
-#  - Administrator privileges
-#  - Active internet connection
+#  - Windows 11 Pro (recomendado)
+#  - Privilégios de Administrador
+#  - Conexão ativa com a Internet
 #
-#  EXECUTION POLICY
+#  POLÍTICA DE EXECUÇÃO (EXECUTION POLICY)
 # -----------------------------------------------------------------------
-#  Before running this script, enable script execution:
+#  Antes de executar este script, habilite a execução de scripts:
 #
-#  Open PowerShell as Administrator and run:
+#  Abra o PowerShell como Administrador e execute:
 #
 #      Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
 #
-#  Verify current policies:
+#  Verifique as políticas atuais:
 #
 #      Get-ExecutionPolicy -List
 #

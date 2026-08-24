@@ -88,7 +88,7 @@
       - postgresql-client
 
   pre_tasks:
-    - name: Display detected distribution details
+    - name: Exibir detalhes da distribuição detectada
       ansible.builtin.debug:
         msg:
           - "Distribution: {{ ansible_facts['distribution'] | default('N/A') }}"
@@ -104,7 +104,7 @@
           - is_wsl
         fail_msg: "Este playbook é apenas para Ubuntu 26.04 no WSL2. Detectado: {{ ansible_facts['distribution'] | default('') }} {{ ubuntu_version | default('') }}"
 
-    - name: Ensure keyrings directory exists
+    - name: Garantir que o diretório keyrings existe
       ansible.builtin.file:
         path: "{{ keyrings_dir }}"
         state: directory
@@ -119,7 +119,7 @@
         owner: "{{ target_user }}"
         group: "{{ target_user }}"
 
-    - name: Ensure Universe repository is enabled
+    - name: Garantir que o repositório Universe está habilitado
       ansible.builtin.command: add-apt-repository universe -y
       register: universe_repo
       changed_when: "'already enabled' not in (universe_repo.stdout | default(''))"
