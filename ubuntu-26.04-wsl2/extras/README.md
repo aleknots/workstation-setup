@@ -38,7 +38,7 @@ plugins=(
   command-not-found
 )
 
-# Navigation Aliases
+# Aliases de Navegação
 alias ..='cd ..'
 alias ...='cd ../..'
 alias l='ls -CF'
@@ -50,7 +50,7 @@ alias mkdir='mkdir -pv'
 alias cp='cp -iv'
 alias mv='mv -iv'
 
-# System Aliases
+# Aliases do Sistema
 alias df='df -h'
 alias du='du -sh * | sort -h'
 alias myip='curl -s ifconfig.me && echo'
@@ -59,14 +59,14 @@ alias ping='ping -c 5'
 alias h='history'
 alias j='jobs -l'
 
-# Apt Aliases
+# Aliases do Apt
 alias apt-update='sudo apt update -y'
 alias apt-upgrade='sudo apt upgrade -y'
 alias apt-remove='sudo apt autoremove -y'
 alias apt-search='apt search'
 alias apt-install='sudo apt install -y'
 
-# Git Aliases
+# Aliases do Git
 alias g='git'
 alias gst='git status'
 alias ga='git add'
@@ -77,7 +77,7 @@ alias gco='git checkout'
 alias gb='git branch'
 alias gcb='git checkout -b'
 
-# Docker Aliases
+# Aliases do Docker
 alias up='docker compose up -d'
 alias down='docker compose down'
 alias dps='docker ps'
@@ -92,7 +92,7 @@ alias dbuild='docker build -t'
 dbash() { docker exec -it "$1" /bin/bash; }
 dsh() { docker exec -it "$1" /bin/sh; }
 
-# Kubernetes Aliases
+# Aliases do Kubernetes
 alias k='kubectl'
 alias kgp='kubectl get pods'
 alias kgs='kubectl get svc'
@@ -109,25 +109,25 @@ kexec() { kubectl exec -it "$@"; }
 kdb() { kubectl exec -it "$1" -- /bin/bash; }
 ksh() { kubectl exec -it "$1" -- /bin/sh; }
 
-# Azure Helper
+# Auxiliar Azure
 azlogin() { az login --use-device-code "$@"; }
 
-# Ansible Python Virtualenv Helper
+# Auxiliar de Virtualenv Python para Ansible
 alias ansible-env='source pyenv/bin/activate'
 ```
 
 ## Vim Configuration (`.vimrc`)
 
 ```vim
-syntax on              " Enable syntax highlighting
-set number             " Show line numbers
-set relativenumber     " Show relative line numbers
-set showmode           " Display current mode
-set ignorecase         " Case insensitive search
-set smartcase          " Smart case searching
-set autoindent         " Preserve indentation
-set tabstop=2          " Tab width
-set shiftwidth=2       " Indent width
-set expandtab          " Convert tabs to spaces
-set bg=dark            " Dark background
+syntax on              " Habilita o destaque de sintaxe
+set number             " Exibe números de linha
+set relativenumber     " Exibe números de linha relativos
+set showmode           " Exibe o modo atual
+set ignorecase         " Busca sem diferenciar maiúsculas/minúsculas
+set smartcase          " Busca inteligente de maiúsculas/minúsculas (smartcase)
+set autoindent         " Preserva a indentação
+set tabstop=2          " Largura do tab
+set shiftwidth=2       " Largura da indentação
+set expandtab          " Converte tabs em espaços
+set bg=dark            " Fundo escuro
 ```
