@@ -10,7 +10,7 @@
 #   ansible-playbook ubuntu-wsl-setup.yml -K --tags tools
 #   ansible-playbook ubuntu-wsl-setup.yml -K --skip-tags upgrade
 #
-# Tags: base, upgrade, wsl, migrate, repos, vendor, docker, cloud, tools, shell, git
+# Tags: base, upgrade, wsl, migrate, repos, vendor, docker, k3s, cloud, tools, claude-code, shell, git
 
 - name: Configuração DevOps/SRE Ubuntu 26.04 WSL2 com Docker Engine
   hosts: localhost
@@ -45,6 +45,10 @@
       - landscape-client.service
     # Docker inicia no primeiro uso (docker.socket) em vez de no boot (~1 s a menos)
     docker_on_demand: true
+    # k3s fica instalado mas parado; suba com "sudo systemctl start k3s".
+    # Com true, ele sobe no boot (consome ~500 MB de RAM e usa as portas 80/443/6443).
+    k3s_enable_on_boot: false
+    k3s_channel: stable
     git_user_name: ""
     git_user_email: ""
     pipx_packages: [pre-commit, ansible-lint]
@@ -246,7 +250,6 @@
     # então só baixa de novo quando sai uma versão nova.
     github_tools:
       - {name: yq, repo: mikefarah/yq, type: binary, asset: '^yq_linux_@ARCH@$', completion: 'shell-completion zsh'}
-      - {name: kind, repo: kubernetes-sigs/kind, type: binary, asset: '^kind-linux-@ARCH@$', completion: 'completion zsh'}
       - {name: k9s, repo: derailed/k9s, type: deb, asset: '^k9s_linux_@ARCH@\.deb$', completion: 'completion zsh'}
       - name: kubelogin
         repo: Azure/kubelogin
@@ -371,7 +374,7 @@
             - "{{ zsh_completion_dir }}"
             - "{{ devtools_state_dir }}"
 
-        - name: Aumentar limites de inotify (kind, IDEs, file watchers)
+        - name: Aumentar limites de inotify (k3s, IDEs, file watchers)
           ansible.posix.sysctl:
             name: "{{ item.key }}"
             value: "{{ item.value }}"
@@ -434,6 +437,9 @@
             - /opt/kubectx
             - /etc/apt/sources.list.d/azure-cli.list          # criado pelo InstallAzureCLIDeb
             - /etc/apt/sources.list.d/microsoft-prod.sources  # só era usado pelo PowerShell
+            - /usr/local/bin/kind                              # substituído pelo k3s
+            - "{{ zsh_completion_dir }}/_kind"
+            - "{{ devtools_state_dir }}/kind"
 
         - name: Verificar Google Cloud CLI instalado via snap
           ansible.builtin.stat:
@@ -544,6 +550,48 @@
             enabled: "{{ not docker_on_demand }}"
           loop: [docker.service, containerd.service]
           when: ansible_facts['service_mgr'] == 'systemd'
+
+    - name: Cluster Kubernetes local (k3s)
+      become: true
+      tags: [k3s]
+      when: ansible_facts['service_mgr'] == 'systemd'
+      block:
+        - name: Criar diretório de configuração do k3s
+          ansible.builtin.file:
+            path: /etc/rancher/k3s
+            state: directory
+            mode: "0755"
+
+        # O kubeconfig fica legível só pelo root e pelo grupo do usuário destino
+        - name: Configurar k3s
+          ansible.builtin.copy:
+            dest: /etc/rancher/k3s/config.yaml
+            mode: "0644"
+            content: |
+              write-kubeconfig-mode: "0640"
+              write-kubeconfig-group: "{{ target_user }}"
+
+        # Não sobrescreve o kubectl do apt; o proxy do ambiente vai para o k3s.service.env
+        - name: Instalar k3s
+          ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
+          args:
+            executable: /bin/bash
+            creates: /usr/local/bin/k3s
+          environment:
+            INSTALL_K3S_CHANNEL: "{{ k3s_channel }}"
+            INSTALL_K3S_SKIP_ENABLE: "true"
+            INSTALL_K3S_SKIP_START: "true"
+
+        - name: Gerar completion do zsh para o k3s
+          ansible.builtin.shell: k3s completion zsh > {{ zsh_completion_dir }}/_k3s
+          args:
+            creates: "{{ zsh_completion_dir }}/_k3s"
+
+        - name: Definir se o k3s sobe no boot
+          ansible.builtin.systemd_service:
+            name: k3s
+            enabled: "{{ k3s_enable_on_boot | bool }}"
+            state: "{{ 'started' if k3s_enable_on_boot | bool else omit }}"
 
     - name: AWS CLI v2
       tags: [cloud]
@@ -956,6 +1004,15 @@
             - {key: user.name, value: "{{ git_user_name }}"}
             - {key: user.email, value: "{{ git_user_email }}"}
           when: item.value | length > 0
+
+        - name: Instalar Claude Code
+          tags: [tools, claude-code]
+          ansible.builtin.shell: curl -fsSL https://claude.ai/install.sh | bash
+          args:
+            executable: /bin/bash
+            creates: "{{ target_home }}/.local/bin/claude"
+          environment:
+            HOME: "{{ target_home }}"
 
         - name: Instalar ferramentas Python isoladas via pipx
           tags: [tools]

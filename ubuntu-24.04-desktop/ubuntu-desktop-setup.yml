@@ -31,7 +31,13 @@
       }}
 
     configure_passwordless_sudo: false
+    overwrite_zshrc: false
     configure_gnome_app_folders: true
+
+    # k3s fica instalado mas parado; suba com "sudo systemctl start k3s".
+    # Com true, ele sobe no boot (consome ~500 MB de RAM e usa as portas 80/443/6443).
+    k3s_enable_on_boot: false
+    k3s_channel: stable
 
     gnome_app_folders:
       - id: devops
@@ -192,56 +198,6 @@
           ansible.builtin.apt:
             upgrade: dist
 
-        - name: Instalar dependências do Cursor AI
-          ansible.builtin.apt:
-            name:
-              - ca-certificates
-              - curl
-              - wget
-              - libfuse2t64
-            state: present
-            update_cache: true
-            fail_on_autoremove: true
-          tags:
-            - cursor
-
-        - name: Verificar resolução DNS para o instalador do Cursor
-          ansible.builtin.command: getent hosts api2.cursor.sh
-          register: cursor_dns_check
-          changed_when: false
-          failed_when: false
-          tags:
-            - cursor
-
-        - name: Exibir resultado da verificação DNS do Cursor
-          ansible.builtin.debug:
-            msg: "DNS api2.cursor.sh: {{ cursor_dns_check.stdout | default('not resolved') }}"
-          tags:
-            - cursor
-
-        - name: Baixar pacote .deb do Cursor AI
-          ansible.builtin.command: >
-            curl -L
-            --fail
-            --retry 5
-            --retry-delay 5
-            -o /tmp/cursor-ai.deb
-            https://api2.cursor.sh/updates/download/golden/linux-x64-deb/cursor/3.7
-          args:
-            creates: /tmp/cursor-ai.deb
-          when: cursor_dns_check.rc == 0
-          tags:
-            - cursor
-
-        - name: Instalar Cursor AI
-          ansible.builtin.apt:
-            deb: /tmp/cursor-ai.deb
-            state: present
-            fail_on_autoremove: true
-          when: cursor_dns_check.rc == 0
-          tags:
-            - cursor
-
         - name: Instalar yq
           ansible.builtin.get_url:
             url: https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
@@ -253,16 +209,24 @@
           delay: 5
           until: yq_download is succeeded
 
-        - name: Instalar ou atualizar Rclone
+        - name: Instalar Rclone
           block:
+            - name: Verificar se o Rclone está instalado
+              ansible.builtin.command: dpkg-query -W rclone
+              register: rclone_check
+              changed_when: false
+              failed_when: false
+
             - name: Baixar pacote do Rclone
               ansible.builtin.get_url:
                 url: https://downloads.rclone.org/rclone-current-linux-amd64.deb
                 dest: /tmp/rclone.deb
+              when: rclone_check.rc != 0
 
             - name: Instalar pacote do Rclone
               ansible.builtin.apt:
                 deb: /tmp/rclone.deb
+              when: rclone_check.rc != 0
 
           always:
             - name: Remove temporary package do Rclone
@@ -318,16 +282,23 @@
 
         - name: Instalar AWS CLI v2
           block:
+            - name: Verificar se o AWS CLI está instalado
+              ansible.builtin.stat:
+                path: /usr/local/bin/aws
+              register: aws_bin
+
             - name: Baixar arquivo compactado do AWS CLI
               ansible.builtin.get_url:
                 url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
                 dest: /tmp/awscliv2.zip
+              when: not aws_bin.stat.exists
 
             - name: Extrair arquivo compactado do AWS CLI
               ansible.builtin.unarchive:
                 src: /tmp/awscliv2.zip
                 dest: /tmp
                 remote_src: true
+              when: not aws_bin.stat.exists
 
             - name: Instalar AWS CLI
               ansible.builtin.command: /tmp/aws/install --update
@@ -417,21 +388,22 @@
                 remote_src: true
                 include:
                   - k9s
+                creates: "{{ target_home }}/.local/bin/k9s"
                 mode: "0755"
                 owner: "{{ target_user }}"
                 group: "{{ target_user }}"
 
-            - name: Instalar Kind
-              ansible.builtin.get_url:
-                url: https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
-                dest: /usr/local/bin/kind
-                mode: "0755"
+            - name: Remover Kind (substituído pelo k3s)
+              ansible.builtin.file:
+                path: /usr/local/bin/kind
+                state: absent
 
             - name: Clone repository do kubectx
               ansible.builtin.git:
                 repo: https://github.com/ahmetb/kubectx.git
                 dest: /opt/kubectx
                 version: master
+                update: false
 
             - name: Criar link simbólico para o kubectx
               ansible.builtin.file:
@@ -444,6 +416,42 @@
                 src: /opt/kubectx/kubens
                 dest: /usr/local/bin/kubens
                 state: link
+
+        - name: Instalar e configurar k3s
+          tags:
+            - k3s
+          block:
+            - name: Criar diretório de configuração do k3s
+              ansible.builtin.file:
+                path: /etc/rancher/k3s
+                state: directory
+                mode: "0755"
+
+            # O kubeconfig fica legível só pelo root e pelo grupo do usuário destino
+            - name: Configurar k3s
+              ansible.builtin.copy:
+                dest: /etc/rancher/k3s/config.yaml
+                mode: "0644"
+                content: |
+                  write-kubeconfig-mode: "0640"
+                  write-kubeconfig-group: "{{ target_user }}"
+
+            # Não sobrescreve o kubectl já instalado; cria só os links crictl e ctr
+            - name: Instalar k3s
+              ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
+              args:
+                executable: /bin/bash
+                creates: /usr/local/bin/k3s
+              environment:
+                INSTALL_K3S_CHANNEL: "{{ k3s_channel }}"
+                INSTALL_K3S_SKIP_ENABLE: "true"
+                INSTALL_K3S_SKIP_START: "true"
+
+            - name: Definir se o k3s sobe no boot
+              ansible.builtin.systemd_service:
+                name: k3s
+                enabled: "{{ k3s_enable_on_boot | bool }}"
+                state: "{{ 'started' if k3s_enable_on_boot | bool else omit }}"
 
         - name: Configure repository MongoDB e instalar ferramentas
           block:
@@ -784,10 +792,19 @@
                 - MesloLGS NF Bold.ttf
                 - MesloLGS NF Italic.ttf
                 - MesloLGS NF Bold Italic.ttf
+              notify: Atualizar cache de fontes
 
-            - name: Atualizar cache de fontes
-              ansible.builtin.command: fc-cache -fv
-              changed_when: false
+    - name: Instalar Claude Code
+      become: true
+      become_user: "{{ target_user }}"
+      ansible.builtin.shell: curl -fsSL https://claude.ai/install.sh | bash
+      args:
+        executable: /bin/bash
+        creates: "{{ target_home }}/.local/bin/claude"
+      environment:
+        HOME: "{{ target_home }}"
+      tags:
+        - claude-code
 
     - name: Instalar Oh My Zsh
       ansible.builtin.shell: |
@@ -816,7 +833,16 @@
         - repo: https://github.com/zsh-users/zsh-completions.git
           dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-completions"
 
+    # Na primeira execução o .zshrc ainda é o modelo do Oh My Zsh; depois disso
+    # ele é preservado para não sobrescrever personalizações do usuário.
+    - name: Verificar se o .zshrc já foi implantado
+      ansible.builtin.command: grep -q 'powerlevel10k/powerlevel10k' "{{ target_home }}/.zshrc"
+      register: zshrc_check
+      changed_when: false
+      failed_when: false
+
     - name: Implantar arquivo .zshrc
+      when: zshrc_check.rc != 0 or (overwrite_zshrc | bool)
       ansible.builtin.copy:
         dest: "{{ target_home }}/.zshrc"
         owner: "{{ target_user }}"
@@ -1002,3 +1028,9 @@
         msg:
           - "Obrigado por utilizar este script de configuração!"
           - "Script desenvolvido por Aleon Chagas"
+
+  handlers:
+    - name: Atualizar cache de fontes
+      become: true
+      ansible.builtin.command: fc-cache -fv
+      changed_when: true

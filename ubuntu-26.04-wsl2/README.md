@@ -22,10 +22,11 @@ Prepara um ambiente leve de desenvolvimento WSL2 com:
 ### DevOps/SRE & Engenharia de Nuvem
 - AWS CLI v2, Azure CLI, Google Cloud CLI (com `gke-gcloud-auth-plugin`)
 - Terraform (repositório HashiCorp), `tflint`, `sops`, `age`
-- `kubectl`, Helm, `k9s`, `kind`, `kubectx`, `kubens`, `stern`, `helmfile`, Flux CLI, Argo CD CLI, `kubelogin`
+- `kubectl`, Helm, `k9s`, `k3s`, `kubectx`, `kubens`, `stern`, `helmfile`, Flux CLI, Argo CD CLI, `kubelogin`
 - `trivy`, `hadolint`, `shellcheck`, `yamllint`, `dive`, `lazygit`, `lazydocker`
 - MongoDB Database Tools, `mongosh`
 - `pre-commit` e `ansible-lint` via `pipx`
+- Claude Code (CLI de IA da Anthropic, instalado em `~/.local/bin/claude`; tags `tools` e `claude-code`)
 
 As ferramentas distribuídas pelo GitHub Releases são baixadas na última versão (ou na versão fixada em `github_tools`) e só são baixadas de novo quando sai uma versão nova. Os completions do zsh são instalados junto.
 
@@ -75,7 +76,9 @@ ansible-playbook ubuntu-wsl-setup.yml --tags tools
 ansible-playbook ubuntu-wsl-setup.yml --skip-tags upgrade
 ```
 
-Tags disponíveis: `base`, `upgrade`, `wsl`, `migrate`, `repos`, `vendor`, `docker`, `cloud`, `tools`, `shell`, `git`.
+Tags disponíveis: `base`, `upgrade`, `wsl`, `migrate`, `repos`, `vendor`, `docker`, `k3s`, `cloud`, `tools`, `claude-code`, `shell`, `git`.
+
+O playbook pode ser executado de novo a qualquer momento: o que já está instalado é pulado. Pacotes apt e snap são checados pelo próprio módulo, o AWS CLI pela existência de `/usr/local/bin/aws`, as ferramentas do GitHub Releases pela versão registrada (só baixam de novo quando sai versão nova) e o Claude Code e o k3s pela existência de `~/.local/bin/claude` e `/usr/local/bin/k3s`. O `~/.zshrc` é gerenciado pelo playbook (com backup); personalizações vão em `~/.zshrc.local`.
 
 ### Rede corporativa com proxy
 
@@ -94,6 +97,8 @@ O playbook repassa o proxy para todas as tarefas (inclusive as que usam `sudo`),
 | `k8s_minor` | `v1.36` | Canal do `kubectl` em `pkgs.k8s.io` |
 | `hashicorp_packages` | `[terraform]` | Pacotes do repositório HashiCorp |
 | `docker_on_demand` | `true` | `false` volta a iniciar o Docker no boot |
+| `k3s_enable_on_boot` | `false` | `true` sobe o k3s no boot |
+| `k3s_channel` | `stable` | Canal de versão do k3s (`stable`, `latest` ou `v1.36`) |
 | `wsl_append_windows_path` | `false` | `true` coloca todo o PATH do Windows no WSL |
 | `git_user_name` / `git_user_email` | vazio | Identidade global do git |
 | `proxy_url` | `$https_proxy` | Proxy corporativo |
@@ -102,13 +107,14 @@ O playbook repassa o proxy para todas as tarefas (inclusive as que usam `sudo`),
 
 O playbook:
 1. Valida se o sistema hospedeiro roda Ubuntu 26.04 no WSL2 e usa o `sudo` clássico quando disponível (o 26.04 vem com `sudo-rs`).
-2. Instala os pacotes base e ajusta limites de `inotify` (kind, IDEs).
+2. Instala os pacotes base e ajusta limites de `inotify` (k3s, IDEs).
 3. Configura o `/etc/wsl.conf` e desliga serviços sem uso no WSL (`snapd`, `wsl-pro`, `lm-sensors`, `landscape-client`).
-4. Remove instalações antigas que conflitam com as versões do apt (tag `migrate`).
+4. Remove instalações antigas que conflitam com as versões do apt ou foram substituídas, como o Kind (tag `migrate`).
 5. Configura os repositórios deb822. Quando um fornecedor ainda não publica pacotes para o 26.04, usa os do 24.04 automaticamente.
 6. Instala Docker, kubectl, Helm, Terraform, `gh`, CLIs de nuvem e ferramentas do MongoDB.
-7. Instala as ferramentas do GitHub Releases e o AWS CLI v2.
-8. Configura Zsh, Oh My Zsh, Powerlevel10k, plugins, git e define o shell padrão.
+7. Instala o k3s (parado, fora do boot) como cluster Kubernetes local.
+8. Instala as ferramentas do GitHub Releases, o AWS CLI v2 e o Claude Code.
+9. Configura Zsh, Oh My Zsh, Powerlevel10k, plugins, git e define o shell padrão.
 
 ## Pós-Instalação
 
@@ -120,6 +126,13 @@ wsl --shutdown
 ```
 
 Em seguida, reabra o Ubuntu no WSL e rode `p10k configure`.
+
+### Autenticar o Claude Code
+Na primeira execução, o `claude` mostra um link de login para abrir no navegador do Windows (conta Claude Pro/Max ou Console da Anthropic):
+```bash
+claude
+```
+O binário se atualiza sozinho em segundo plano. Para checar a instalação, use `claude doctor`.
 
 ### Abertura instantânea do terminal
 
@@ -137,6 +150,25 @@ docker run hello-world
 ```
 
 O primeiro comando `docker` depois de abrir o WSL leva alguns segundos porque inicia o daemon. Contêineres com `restart: always` só voltam a subir depois desse primeiro comando.
+
+### Usar o k3s (cluster Kubernetes local)
+O k3s substitui o Kind. Ele é instalado **parado e fora do boot**, para não consumir memória nem ocupar as portas 80/443/6443 sem necessidade. Para usar:
+
+```bash
+sudo systemctl start k3s
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl get nodes
+```
+
+O kubeconfig `/etc/rancher/k3s/k3s.yaml` é gerado na primeira subida, legível pelo seu usuário (modo `0640`, grupo do usuário), sem precisar de `sudo`. Ele não substitui o `~/.kube/config`, então os contextos de AKS/EKS/GKE continuam intactos.
+
+Para parar o cluster (o `systemctl stop` sozinho deixa os contêineres rodando):
+
+```bash
+sudo systemctl stop k3s && sudo /usr/local/bin/k3s-killall.sh
+```
+
+Para o k3s subir sempre no boot, rode o playbook com `-e k3s_enable_on_boot=true`. Para desinstalar: `sudo /usr/local/bin/k3s-uninstall.sh`.
 
 ### Confirmar Shell Padrão
 ```bash
