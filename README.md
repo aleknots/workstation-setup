@@ -4,18 +4,17 @@
 ![Ansible](https://img.shields.io/badge/Ansible-Automation-EE0000?logo=ansible&logoColor=white)
 ![WSL2](https://img.shields.io/badge/WSL2-Ubuntu%2026.04-4E1A3D?logo=linux&logoColor=white)
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2026.04%20%7C%2026.10-E95420?logo=ubuntu&logoColor=white)
-![Windows 11](https://img.shields.io/badge/Windows-11%20Pro-0078D4?logo=windows&logoColor=white)
+![Windows 11](https://img.shields.io/badge/Windows-11%20Home%20%7C%20Pro-0078D4?logo=windows&logoColor=white)
 ![PowerShell 7](https://img.shields.io/badge/PowerShell-7-5391FE?logo=powershell&logoColor=white)
 ![Licença](https://img.shields.io/badge/License-MIT-green.svg)
 
-Playbooks e scripts automatizados para configuração de workstation no Windows 11 Pro, Ubuntu Desktop e Ubuntu no WSL2, sob medida para o conjunto de ferramentas de DevOps e SRE.
+Playbooks e scripts automatizados para configuração de workstation no Windows 11 (Home e Pro), Ubuntu Desktop e Ubuntu no WSL2, sob medida para o conjunto de ferramentas de DevOps e SRE.
 
 ## Subprojetos
 
 | Subprojeto | Caminho | Ponto de Entrada |
 |---------|---------|-------------------|
-| Windows 11 Pro | [windows-11-pro](./windows-11-pro/README.md) | `windows-11-pro/windows-setup.ps1` |
-| Windows 11 + PowerShell 7 | [windows-11-pwsh7](./windows-11-pwsh7/README.md) | `windows-11-pwsh7/install-pwsh7.ps1` |
+| Windows 11 (Home e Pro) | [windows-11](./windows-11/README.md) | `windows-11/setup-windows.ps1` |
 | Ubuntu 24.04 Desktop | [ubuntu-24.04-desktop](./ubuntu-24.04-desktop/README.md) | `ubuntu-24.04-desktop/ubuntu-desktop-setup.yml` |
 | Ubuntu 26.04 Desktop | [ubuntu-26.04-desktop](./ubuntu-26.04-desktop/README.md) | `ubuntu-26.04-desktop/ubuntu-desktop-setup.yml` |
 | Ubuntu 26.10 Desktop | [ubuntu-26.10-desktop](./ubuntu-26.10-desktop/README.md) | `ubuntu-26.10-desktop/ubuntu-desktop-setup.yml` |
@@ -24,8 +23,7 @@ Playbooks e scripts automatizados para configuração de workstation no Windows 
 
 ## Notas Importantes
 
-- **Script do Windows 11**: Deve ser executado a partir de um terminal PowerShell elevado (Executar como Administrador).
-- **Windows 11 + PowerShell 7**: Versão focada no terminal, sem apps de desktop. O `install-pwsh7.ps1` roda no Windows PowerShell e abre o setup no PowerShell 7.
+- **Script do Windows 11**: Script único para Home e Pro, executado num PowerShell elevado (Executar como Administrador). Instala o PowerShell 7 e pergunta no início a versão: Home (PowerShell 7 com as ferramentas de DevOps + Docker Desktop e k3s via k3d, sem Ubuntu) ou Pro (PowerShell 7 + WSL2 com Ubuntu 26.04, Hyper-V, Área Restrita, Vagrant, Packer e Multipass). Apps, jogos e CLIs de nuvem entram nas duas versões e vêm todos ativos: **revise a lista de apps e comente os que não quiser antes de rodar**. A versão Home também serve para portáteis com Windows 11, como ROG Ally e Legion Go.
 - **Playbooks do Ubuntu Desktop**: Destinados para instalações de desktop Linux nativas / bare-metal (não WSL2).
 - **Reexecução dos playbooks Ubuntu**: Todos podem ser executados de novo com segurança; o que já está instalado é pulado. Todos instalam o Claude Code (tag `claude-code`).
 - **Ubuntu 26.10 Desktop**: Versão intermediária (não LTS). Alguns repositórios de terceiros ainda não publicam a suite `stonking`, então o playbook usa as suites `resolute` (26.04) ou `noble` (24.04) onde necessário — veja o [README do subprojeto](./ubuntu-26.10-desktop/README.md#diferenças-em-relação-ao-playbook-2604).

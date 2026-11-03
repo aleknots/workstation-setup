@@ -22,7 +22,8 @@ Prepara um ambiente leve de desenvolvimento WSL2 com:
 ### DevOps/SRE & Engenharia de Nuvem
 - AWS CLI v2, Azure CLI, Google Cloud CLI (com `gke-gcloud-auth-plugin`)
 - Terraform (repositório HashiCorp), `tflint`, `sops`, `age`
-- `kubectl`, Helm, `k9s`, `k3s`, `kubectx`, `kubens`, `stern`, `helmfile`, Flux CLI, Argo CD CLI, `kubelogin`
+- `kubectl`, Helm, `k9s`, `k3s`, `k3d`, `kubectx`, `kubens`, `stern`, `helmfile`, Flux CLI, Argo CD CLI, `kubelogin`
+- `kubeseal` (Sealed Secrets) e o plugin `kubectl argo rollouts`
 - `trivy`, `hadolint`, `shellcheck`, `yamllint`, `dive`, `lazygit`, `lazydocker`
 - MongoDB Database Tools, `mongosh`
 - `pre-commit` e `ansible-lint` via `pipx`
@@ -99,6 +100,8 @@ O playbook repassa o proxy para todas as tarefas (inclusive as que usam `sudo`),
 | `docker_on_demand` | `true` | `false` volta a iniciar o Docker no boot |
 | `k3s_enable_on_boot` | `false` | `true` sobe o k3s no boot |
 | `k3s_channel` | `stable` | Canal de versão do k3s (`stable`, `latest` ou `v1.36`) |
+| `k3s_lab` | `false` | `true` instala o Argo CD e os add-ons no k3s |
+| `k3s_lab_addons` | Sealed Secrets e Argo Rollouts | Add-ons do lab; o `kube-prometheus-stack` fica desligado |
 | `wsl_append_windows_path` | `false` | `true` coloca todo o PATH do Windows no WSL |
 | `git_user_name` / `git_user_email` | vazio | Identidade global do git |
 | `proxy_url` | `$https_proxy` | Proxy corporativo |
@@ -114,7 +117,8 @@ O playbook:
 6. Instala Docker, kubectl, Helm, Terraform, `gh`, CLIs de nuvem e ferramentas do MongoDB.
 7. Instala o k3s (parado, fora do boot) como cluster Kubernetes local.
 8. Instala as ferramentas do GitHub Releases, o AWS CLI v2 e o Claude Code.
-9. Configura Zsh, Oh My Zsh, Powerlevel10k, plugins, git e define o shell padrão.
+9. Com `-e k3s_lab=true`: liga o k3s, grava `~/.kube/k3s.yaml` e instala o Argo CD e os add-ons do lab.
+10. Configura Zsh, Oh My Zsh, Powerlevel10k, plugins, git e define o shell padrão.
 
 ## Pós-Instalação
 
@@ -169,6 +173,48 @@ sudo systemctl stop k3s && sudo /usr/local/bin/k3s-killall.sh
 ```
 
 Para o k3s subir sempre no boot, rode o playbook com `-e k3s_enable_on_boot=true`. Para desinstalar: `sudo /usr/local/bin/k3s-uninstall.sh`.
+
+O zsh tem atalhos para isso:
+
+| Comando | Função |
+|---|---|
+| `k3s-up` | Liga o k3s, grava `~/.kube/k3s.yaml` (contexto `k3s`) e lista os nós |
+| `k3s-down` | Desliga o k3s e encerra os contêineres, liberando a memória |
+| `k3s-status` | Mostra se o k3s está ligado e lista os nós |
+
+O `~/.kube/k3s.yaml` entra no `KUBECONFIG` junto com o `~/.kube/config`, então o contexto `k3s` aparece no `kubectx` ao lado dos clusters de nuvem.
+
+### Lab de Kubernetes com Argo CD
+
+Para montar um lab GitOps sobre o k3s, rode o playbook com o lab ativado:
+
+```bash
+ansible-playbook ubuntu-wsl-setup.yml --tags k3s -e k3s_lab=true
+```
+
+O playbook liga o k3s, instala o Argo CD no namespace `argocd` e registra os add-ons como *Applications* do Argo CD. O próprio Argo CD instala e mantém cada um:
+
+| Add-on | Padrão | Para quê |
+|---|---|---|
+| Sealed Secrets | Ligado | Guardar secrets criptografados no Git (`kubeseal`) |
+| Argo Rollouts | Ligado | Deploys canary e blue-green, com dashboard |
+| kube-prometheus-stack | Desligado | Prometheus e Grafana; usa ~1 GB a mais de RAM |
+
+Para mudar os add-ons, passe os três (o `-e` substitui o dicionário inteiro):
+
+```bash
+ansible-playbook ubuntu-wsl-setup.yml --tags k3s -e k3s_lab=true \
+  -e '{"k3s_lab_addons": {"sealed-secrets": true, "argo-rollouts": true, "kube-prometheus-stack": true}}'
+```
+
+| Comando | Função |
+|---|---|
+| `argocd-ui` | Interface do Argo CD em `https://localhost:8080` (abre também no navegador do Windows) e a senha do `admin` |
+| `argocd-pass` / `argocd-login` | Senha inicial do `admin` / login do CLI `argocd` sem port-forward |
+| `rollouts-ui` | Dashboard do Argo Rollouts em `http://localhost:3100` |
+| `grafana-ui` | Grafana em `http://localhost:3000` (`admin`/`admin`), se o add-on estiver ligado |
+
+No Windows, o perfil do PowerShell 7 do [windows-11](../windows-11/README.md) tem os mesmos comandos e controla o k3s do WSL sem abrir o Ubuntu.
 
 ### Confirmar Shell Padrão
 ```bash

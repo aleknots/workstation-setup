@@ -9,6 +9,7 @@
 #   ansible-playbook ubuntu-wsl-setup.yml -K
 #   ansible-playbook ubuntu-wsl-setup.yml -K --tags tools
 #   ansible-playbook ubuntu-wsl-setup.yml -K --skip-tags upgrade
+#   ansible-playbook ubuntu-wsl-setup.yml -K --tags k3s -e k3s_lab=true   # k3s + Argo CD e add-ons
 #
 # Tags: base, upgrade, wsl, migrate, repos, vendor, docker, k3s, cloud, tools, claude-code, shell, git
 
@@ -45,10 +46,48 @@
       - landscape-client.service
     # Docker inicia no primeiro uso (docker.socket) em vez de no boot (~1 s a menos)
     docker_on_demand: true
-    # k3s fica instalado mas parado; suba com "sudo systemctl start k3s".
+    # k3s fica instalado mas parado; suba com "sudo systemctl start k3s" (ou k3s-up).
     # Com true, ele sobe no boot (consome ~500 MB de RAM e usa as portas 80/443/6443).
     k3s_enable_on_boot: false
     k3s_channel: stable
+    # Lab sobre o k3s: Argo CD, add-ons e ~/.kube/k3s.yaml. Desligado por padrão;
+    # ative com -e k3s_lab=true.
+    k3s_lab: false
+    argocd_install: true
+    argocd_manifest: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    # Add-ons do lab, instalados pelo próprio Argo CD como Applications de Helm
+    k3s_lab_addons:
+      sealed-secrets: true
+      argo-rollouts: true
+      kube-prometheus-stack: false    # Prometheus + Grafana; usa ~1 GB a mais de RAM
+    argocd_lab_apps:
+      - name: sealed-secrets
+        repo: https://bitnami.github.io/sealed-secrets
+        chart: sealed-secrets
+        namespace: kube-system
+        # "helm_values" e não "values": item.values no Jinja é o método values() do dicionário
+        helm_values:
+          # Nome que o kubeseal procura por padrão
+          fullnameOverride: sealed-secrets-controller
+      - name: argo-rollouts
+        repo: https://argoproj.github.io/argo-helm
+        chart: argo-rollouts
+        namespace: argo-rollouts
+        helm_values:
+          dashboard:
+            enabled: true
+      - name: kube-prometheus-stack
+        repo: https://prometheus-community.github.io/helm-charts
+        chart: kube-prometheus-stack
+        namespace: monitoring
+        helm_values:
+          grafana:
+            adminPassword: admin
+          # Componentes do control plane que o k3s não expõe separadamente
+          kubeEtcd: {enabled: false}
+          kubeControllerManager: {enabled: false}
+          kubeScheduler: {enabled: false}
+          kubeProxy: {enabled: false}
     git_user_name: ""
     git_user_email: ""
     pipx_packages: [pre-commit, ansible-lint]
@@ -267,6 +306,9 @@
       - {name: hadolint, repo: hadolint/hadolint, type: binary, asset: '^hadolint-linux-@ARCH@$'}
       - {name: dive, repo: wagoodman/dive, type: deb, asset: '^dive_.*_linux_@ARCH@\.deb$'}
       - {name: mongosh, repo: mongodb-js/mongosh, type: deb, asset: '^mongodb-mongosh_.*_@ARCH@\.deb$'}
+      - {name: k3d, repo: k3d-io/k3d, type: binary, asset: '^k3d-linux-@ARCH@$', completion: 'completion zsh'}
+      - {name: kubeseal, repo: bitnami-labs/sealed-secrets, type: archive, asset: '^kubeseal-.*-linux-@ARCH@\.tar\.gz$'}
+      - {name: kubectl-argo-rollouts, repo: argoproj/argo-rollouts, type: binary, asset: '^kubectl-argo-rollouts-linux-@ARCH@$'}
       - {name: lazygit, repo: jesseduffield/lazygit, type: archive, asset: '^lazygit_.*_linux_@ARCH@\.tar\.gz$'}
       - {name: lazydocker, repo: jesseduffield/lazydocker, type: archive, asset: '^lazydocker_.*_linux_@ARCH@\.tar\.gz$'}
 
@@ -747,6 +789,101 @@
                 state: absent
               when: gh_tmp.path is defined
 
+    # Camada sobre o k3s instalado no bloco "Cluster Kubernetes local (k3s)": liga o
+    # cluster (sem mudar o boot, que segue k3s_enable_on_boot), grava o kubeconfig e
+    # instala o Argo CD e os add-ons
+    - name: Lab local de Kubernetes (Argo CD e add-ons)
+      become: true
+      tags: [k3s]
+      when:
+        - k3s_lab | bool
+        - ansible_facts['service_mgr'] == 'systemd'
+      block:
+        - name: Ligar o k3s para instalar o lab
+          ansible.builtin.systemd_service:
+            name: k3s
+            state: started
+
+        - name: Aguardar o kubeconfig do k3s
+          ansible.builtin.wait_for:
+            path: /etc/rancher/k3s/k3s.yaml
+            timeout: 120
+
+        - name: Ler o kubeconfig do k3s
+          ansible.builtin.slurp:
+            src: /etc/rancher/k3s/k3s.yaml
+          register: k3s_kubeconfig
+
+        - name: Criar a pasta ~/.kube
+          ansible.builtin.file:
+            path: "{{ target_home }}/.kube"
+            state: directory
+            owner: "{{ target_user }}"
+            mode: "0700"
+
+        # O k3s chama cluster, usuário e contexto de "default"; aqui viram "k3s"
+        - name: Gravar ~/.kube/k3s.yaml com o contexto k3s
+          ansible.builtin.copy:
+            dest: "{{ target_home }}/.kube/k3s.yaml"
+            content: "{{ k3s_kubeconfig.content | b64decode | regex_replace('(?m): default$', ': k3s') }}"
+            owner: "{{ target_user }}"
+            mode: "0600"
+
+        - name: Instalar o Argo CD
+          when: argocd_install | bool
+          block:
+            - name: Criar o namespace argocd
+              ansible.builtin.shell: k3s kubectl create namespace argocd --dry-run=client -o yaml | k3s kubectl apply -f -
+              register: argocd_namespace
+              changed_when: "'created' in argocd_namespace.stdout"
+
+            # Server-side apply: os CRDs do Argo CD passam do limite de anotação do apply comum
+            - name: Aplicar os manifestos do Argo CD
+              ansible.builtin.command: k3s kubectl apply -n argocd --server-side --force-conflicts -f {{ argocd_manifest }}
+              changed_when: false
+
+            - name: Aguardar o argocd-server ficar pronto
+              ansible.builtin.command: k3s kubectl -n argocd rollout status deployment/argocd-server --timeout=600s
+              changed_when: false
+
+            # O Argo CD instala e mantém cada add-on (sync automático); acompanhe pela interface
+            - name: Registrar os add-ons do lab no Argo CD
+              ansible.builtin.command: k3s kubectl apply -f -
+              args:
+                stdin: "{{ argocd_app | to_nice_yaml }}"
+              vars:
+                argocd_app:
+                  apiVersion: argoproj.io/v1alpha1
+                  kind: Application
+                  metadata:
+                    name: "{{ item.name }}"
+                    namespace: argocd
+                  spec:
+                    project: default
+                    source:
+                      repoURL: "{{ item.repo }}"
+                      chart: "{{ item.chart }}"
+                      targetRevision: "*"
+                      helm:
+                        releaseName: "{{ item.name }}"
+                        valuesObject: "{{ item.helm_values | default({}) }}"
+                    destination:
+                      server: https://kubernetes.default.svc
+                      namespace: "{{ item.namespace }}"
+                    syncPolicy:
+                      automated:
+                        prune: true
+                        selfHeal: true
+                      syncOptions:
+                        - CreateNamespace=true
+                        - ServerSideApply=true
+              loop: "{{ argocd_lab_apps }}"
+              loop_control:
+                label: "{{ item.name }}"
+              when: k3s_lab_addons[item.name] | default(false) | bool
+              register: argocd_app_apply
+              changed_when: argocd_app_apply.stdout is search('created|configured')
+
     - name: Ambiente do usuário
       become: "{{ user_become }}"
       become_user: "{{ target_user }}"
@@ -864,6 +1001,9 @@
               unset dir
               {% endif %}
 
+              # Lab k3s: o contexto "k3s" fica disponível junto com os outros clusters
+              [[ -f ~/.kube/k3s.yaml ]] && export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/k3s.yaml"
+
               [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
               [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 
@@ -955,6 +1095,42 @@
 
               # Pod efêmero com ferramentas de rede (dig, curl, tcpdump...) no namespace atual
               knetshoot() { kubectl run "netshoot-$RANDOM" --rm -it --restart=Never --image=nicolaka/netshoot -- "${@:-zsh}"; }
+
+              # --- Lab k3s (Argo CD e add-ons com -e k3s_lab=true) ----------------------
+              # O k3s não sobe no boot: ligue quando for usar e desligue para liberar a RAM.
+              # O k3s-up também grava ~/.kube/k3s.yaml com o contexto "k3s" (o k3s chama
+              # cluster, usuário e contexto de "default").
+              k3s-up() {
+                sudo systemctl start k3s || return
+                local i
+                for i in {1..30}; do [[ -r /etc/rancher/k3s/k3s.yaml ]] && break; sleep 1; done
+                mkdir -p ~/.kube
+                sed 's/: default$/: k3s/' /etc/rancher/k3s/k3s.yaml > ~/.kube/k3s.yaml && chmod 600 ~/.kube/k3s.yaml
+                export KUBECONFIG="$HOME/.kube/config:$HOME/.kube/k3s.yaml"
+                kubectl config use-context k3s >/dev/null && kubectl get nodes
+              }
+              alias k3s-down='sudo systemctl stop k3s; sudo /usr/local/bin/k3s-killall.sh >/dev/null'
+              alias k3s-status='systemctl is-active k3s; kubectl --context k3s get nodes 2>/dev/null'
+
+              # Senha inicial do usuário admin do Argo CD
+              argocd-pass() {
+                kubectl --context k3s -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+                echo
+              }
+
+              # Interface do Argo CD em https://localhost:8080 (abre também no navegador do Windows)
+              argocd-ui() {
+                echo "https://localhost:8080 · usuário admin · senha: $(argocd-pass)"
+                kubectl --context k3s -n argocd port-forward svc/argocd-server 8080:443
+              }
+
+              # Login do CLI do Argo CD sem port-forward (usa a API do cluster)
+              alias argocd-login='argocd login --core && kubectl config set-context --current --namespace argocd'
+
+              # Dashboard do Argo Rollouts em http://localhost:3100
+              alias rollouts-ui='kubectl argo rollouts dashboard'
+              # Grafana (add-on kube-prometheus-stack) em http://localhost:3000 · admin/admin
+              alias grafana-ui='kubectl --context k3s -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80'
 
               # --- Terraform --------------------------------------------------------------
               alias tf='terraform'
@@ -1052,6 +1228,7 @@
           - "  2. Abra o terminal de novo e rode: p10k configure"
           - "  3. Logins: gh auth login | az login | aws configure sso | gcloud init"
           - "Customizações pessoais do shell: ~/.zshrc.local"
+          - "{{ 'Lab k3s: k3s-up / k3s-down · Argo CD: argocd-ui (https://localhost:8080)' if k3s_lab | bool else 'Lab k3s + Argo CD: rode de novo com --tags k3s -e k3s_lab=true' }}"
           - "Script desenvolvido por Aleon Chagas"
 
   handlers:

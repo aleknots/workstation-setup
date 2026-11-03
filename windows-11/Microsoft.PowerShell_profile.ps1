@@ -1,7 +1,7 @@
-# =============================================================================
+﻿# =============================================================================
 #  Perfil PowerShell 7 · SRE/DevOps
-#  Implantado pelo setup-pwsh7.ps1 (sobrescrito a cada execução, com backup).
-#  Customizações pessoais e proxy: profile.local.ps1, na mesma pasta.
+#  Implantado pelo setup-windows.ps1 (sobrescrito a cada execução, com backup).
+#  Customizações pessoais: profile.local.ps1, na mesma pasta.
 # =============================================================================
 
 $ProfileDir = Split-Path -Parent $PROFILE
@@ -26,6 +26,12 @@ foreach ($dir in $env:Path -split ';') {
 }
 
 function Test-Cmd([string]$Name) { $PathCommands.Contains($Name) }
+
+# Há um Ubuntu no WSL? Só na versão Pro do setup; a distro "docker-desktop" do Docker
+# Desktop (versão Home) não conta. Lido do registro: listar as distros com o wsl.exe
+# custaria centenas de milissegundos a cada terminal aberto.
+$HasUbuntuWsl = [bool](Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction Ignore |
+    Where-Object { (Get-ItemProperty $_.PSPath).DistributionName -like 'Ubuntu*' })
 #endregion
 
 #region Prompt ------------------------------------------------------------------
@@ -468,19 +474,6 @@ function h {
         Invoke-Expression $command
     }
 }
-
-# Proxy corporativo: kubectl, helm, gh e terraform só respeitam variáveis de ambiente.
-# Defina $global:ProxyUrl no profile.local.ps1.
-function proxy-on([string]$Url = $global:ProxyUrl) {
-    if (-not $Url) { Write-Warning 'Defina $global:ProxyUrl no profile.local.ps1 ou passe a URL.'; return }
-    $env:HTTP_PROXY = $env:HTTPS_PROXY = $Url
-    $env:NO_PROXY = 'localhost,127.0.0.1,::1,.local,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
-    Write-Host "Proxy ativo: $Url"
-}
-function proxy-off {
-    Remove-Item Env:HTTP_PROXY, Env:HTTPS_PROXY, Env:NO_PROXY -ErrorAction Ignore
-    Write-Host 'Proxy desativado'
-}
 #endregion
 
 #region Git ------------------------------------------------------------------------
@@ -508,7 +501,7 @@ function d([string]$Message = 'Automated commit') {
 
 #region Docker (Engine no WSL) --------------------------------------------------------
 # Sem Docker Desktop, o comando docker do Windows repassa para o Docker do WSL
-if (-not (Test-Cmd docker) -and (Test-Cmd wsl)) {
+if (-not (Test-Cmd docker) -and $HasUbuntuWsl) {
     function docker { wsl.exe -e docker @args }
 }
 function up { docker compose up -d @args }
@@ -562,6 +555,153 @@ function ksecret {
 function knetshoot {
     $command = if ($args) { $args } else { 'zsh' }
     kubectl run "netshoot-$(Get-Random -Maximum 9999)" --rm -it --restart=Never --image=nicolaka/netshoot -- @command
+}
+#endregion
+
+#region Lab k3s ----------------------------------------------------------------------------
+# Versão Pro:  o k3s roda no Ubuntu do WSL2 (playbook com -e k3s_lab=true), contexto "k3s".
+# Versão Home: o k3s roda em contêineres do Docker Desktop, via k3d, contexto "k3d-lab".
+# Nos dois casos kubectl, k9s, helm, argocd, kubeseal e Headlamp acessam o cluster pelo
+# localhost, sem abrir o Ubuntu.
+$LabContext = $null
+
+if ($HasUbuntuWsl) {
+    $LabContext = 'k3s'
+    $K3sDistro = 'Ubuntu-26.04'
+    $K3sKubeconfig = Join-Path $HOME '.kube\k3s.yaml'
+
+    function Set-K3sKubeconfigEnv {
+        $env:KUBECONFIG = @((Join-Path $HOME '.kube\config'), $K3sKubeconfig) -join ';'
+    }
+    if (Test-Path $K3sKubeconfig) { Set-K3sKubeconfigEnv }
+
+    function Invoke-K3sRoot { wsl.exe -d $K3sDistro -u root -e @args }
+
+    function k3s-up {
+        Invoke-K3sRoot systemctl start k3s
+        if ($LASTEXITCODE) { Write-Warning "Não foi possível iniciar o k3s na distro $K3sDistro."; return }
+        # O k3s chama cluster, usuário e contexto de "default"; no Windows viram "k3s"
+        $config = (Invoke-K3sRoot cat /etc/rancher/k3s/k3s.yaml) -join "`n"
+        $null = New-Item -ItemType Directory -Path (Split-Path $K3sKubeconfig) -Force
+        ($config -replace '(?m): default$', ': k3s') | Set-Content -Path $K3sKubeconfig
+        Set-K3sKubeconfigEnv
+        $null = kubectl config use-context k3s
+        kubectl get nodes
+    }
+
+    function k3s-down {
+        Invoke-K3sRoot sh -c 'systemctl stop k3s; /usr/local/bin/k3s-killall.sh >/dev/null 2>&1'
+        'k3s desligado'
+    }
+
+    function k3s-status {
+        $state = Invoke-K3sRoot systemctl is-active k3s
+        "k3s: $state"
+        if ($state -eq 'active') { kubectl --context k3s get nodes }
+    }
+
+    # k3d (clusters k3s dentro do Docker) roda no WSL, onde está o Docker
+    function k3d { wsl.exe -d $K3sDistro -e k3d @args }
+}
+elseif (Test-Cmd k3d) {
+    $LabContext = 'k3d-lab'
+    $LabCluster = 'lab'
+
+    function Test-DockerReady {
+        $null = docker info 2>&1
+        if ($LASTEXITCODE) {
+            Write-Warning 'O Docker não respondeu: abra o Docker Desktop e espere ele ficar pronto.'
+            return $false
+        }
+        $true
+    }
+
+    # Cria o cluster na primeira vez e só o religa nas seguintes; o k3d grava o
+    # contexto k3d-lab no ~/.kube/config
+    function k3s-up {
+        if (-not (Test-DockerReady)) { return }
+        $exists = @(k3d cluster list -o json | ConvertFrom-Json) | Where-Object name -eq $LabCluster
+        if ($exists) { k3d cluster start $LabCluster }
+        else { k3d cluster create $LabCluster }
+        $null = kubectl config use-context $LabContext
+        kubectl get nodes
+    }
+
+    function k3s-down { k3d cluster stop $LabCluster }
+
+    function k3s-status { k3d cluster list }
+
+    # Argo CD e os mesmos add-ons do playbook do WSL; o próprio Argo CD instala e mantém
+    # cada add-on. -Grafana inclui o kube-prometheus-stack (~1 GB a mais de RAM).
+    function lab-argocd {
+        param([switch]$Grafana)
+        $ctx = '--context', $LabContext
+        kubectl @ctx create namespace argocd --dry-run=client -o yaml | kubectl @ctx apply -f - | Out-Null
+        kubectl @ctx apply -n argocd --server-side --force-conflicts `
+            -f 'https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml' | Out-Null
+        kubectl @ctx -n argocd rollout status deployment/argocd-server --timeout=600s
+
+        $addons = @(
+            @{ Name = 'sealed-secrets'; Repo = 'https://bitnami.github.io/sealed-secrets'; Namespace = 'kube-system'
+               Values = @{ fullnameOverride = 'sealed-secrets-controller' } }
+            @{ Name = 'argo-rollouts'; Repo = 'https://argoproj.github.io/argo-helm'; Namespace = 'argo-rollouts'
+               Values = @{ dashboard = @{ enabled = $true } } }
+        )
+        if ($Grafana) {
+            $addons += @{ Name = 'kube-prometheus-stack'; Repo = 'https://prometheus-community.github.io/helm-charts'; Namespace = 'monitoring'
+                Values = @{ grafana = @{ adminPassword = 'admin' }; kubeEtcd = @{ enabled = $false }
+                    kubeControllerManager = @{ enabled = $false }; kubeScheduler = @{ enabled = $false }; kubeProxy = @{ enabled = $false } } }
+        }
+        foreach ($addon in $addons) {
+            @{
+                apiVersion = 'argoproj.io/v1alpha1'
+                kind       = 'Application'
+                metadata   = @{ name = $addon.Name; namespace = 'argocd' }
+                spec       = @{
+                    project     = 'default'
+                    source      = @{ repoURL = $addon.Repo; chart = $addon.Name; targetRevision = '*'
+                                     helm = @{ releaseName = $addon.Name; valuesObject = $addon.Values } }
+                    destination = @{ server = 'https://kubernetes.default.svc'; namespace = $addon.Namespace }
+                    syncPolicy  = @{ automated = @{ prune = $true; selfHeal = $true }
+                                     syncOptions = @('CreateNamespace=true', 'ServerSideApply=true') }
+                }
+            } | ConvertTo-Json -Depth 10 | kubectl @ctx apply -f -
+        }
+        'Argo CD pronto: argocd-ui'
+    }
+}
+
+# Comandos do Argo CD, Rollouts e Grafana, no contexto do lab que existir
+if ($LabContext) {
+    function argocd-pass {
+        $encoded = kubectl --context $LabContext -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}'
+        [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
+    }
+
+    # Interface do Argo CD em https://localhost:8080; Ctrl+C encerra o port-forward
+    function argocd-ui {
+        "https://localhost:8080 · usuário admin · senha: $(argocd-pass)"
+        Start-Process 'https://localhost:8080'
+        kubectl --context $LabContext -n argocd port-forward svc/argocd-server 8080:443
+    }
+
+    # Login do CLI do Argo CD direto pela API do cluster, sem port-forward
+    function argocd-login {
+        argocd login --core
+        kubectl config set-context --current --namespace argocd
+    }
+
+    # Dashboard do Argo Rollouts em http://localhost:3100
+    function rollouts-ui {
+        Start-Process 'http://localhost:3100'
+        kubectl argo rollouts dashboard
+    }
+
+    # Grafana (add-on kube-prometheus-stack) em http://localhost:3000 · admin/admin
+    function grafana-ui {
+        Start-Process 'http://localhost:3000'
+        kubectl --context $LabContext -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+    }
 }
 #endregion
 
