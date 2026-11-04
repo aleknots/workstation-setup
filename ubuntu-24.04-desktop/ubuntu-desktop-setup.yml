@@ -452,6 +452,8 @@
                 name: k3s
                 enabled: "{{ k3s_enable_on_boot | bool }}"
                 state: "{{ 'started' if k3s_enable_on_boot | bool else omit }}"
+              # No --check o k3s não é instalado de fato, então o serviço ainda não existe
+              ignore_errors: "{{ ansible_check_mode }}"
 
         - name: Configure repository MongoDB e instalar ferramentas
           block:

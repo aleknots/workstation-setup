@@ -46,6 +46,40 @@ Por ser mais leve, a versão Home também serve para dispositivos portáteis com
 
 Para não perguntar, use `-Versao Home` ou `-Versao Pro`; sem terminal interativo, vale a versão da edição detectada.
 
+## Configuração do WSL (.wslconfig)
+
+Nas versões Home e Pro (e no Enterprise), o setup grava o `%USERPROFILE%\.wslconfig`. Ele vale para o Ubuntu da versão Pro e para a distro do Docker Desktop da versão Home:
+
+```ini
+[wsl2]
+networkingMode=mirrored    # o WSL usa o IP e as portas do Windows (localhost nos dois sentidos)
+dnsTunneling=true          # DNS resolvido pelo Windows: funciona com VPN e proxy
+autoProxy=true             # o WSL herda o proxy configurado no Windows
+firewall=true              # regras do Firewall do Windows valem também para o WSL
+memory=6GB                 # veja a tabela abaixo
+processors=6               # até 6, sem passar dos processadores da máquina
+
+[general]
+instanceIdleTimeout=-1     # mantém o WSL ligado quando ocioso: terminal instantâneo
+
+[experimental]
+autoMemoryReclaim=gradual  # devolve ao Windows a memória de cache que o WSL não usa
+sparseVhd=true             # o disco virtual encolhe quando você apaga imagens e clusters
+```
+
+### Limite de memória
+
+| Máquina | Memória do WSL |
+|---|---|
+| PCs em geral | **6 GB**, sem passar da metade da RAM (ex.: 4 GB num PC de 8 GB) |
+| ROG Ally / Ally X / Xbox Ally | **25% da RAM, mínimo 4 GB** (a RAM é dividida com a GPU e os jogos) |
+| Qualquer máquina, com `-WslMemoryGB <n>` | **n GB** |
+
+Outros portáteis, como o Legion Go, não são detectados: neles vale a regra dos PCs em geral, ou use `-WslMemoryGB` (ex.: `-WslMemoryGB 4`).
+
+No ROG Ally o setup **não** grava o `instanceIdleTimeout=-1`: lá o WSL desliga quando ocioso, para não gastar RAM e bateria durante os jogos.
+
+As chaves acima são reaplicadas a cada execução do setup (com backup do arquivo anterior em `.wslconfig.bak-<data>`). Outras chaves que você adicionar no arquivo são mantidas. As mudanças valem depois de `wsl --shutdown` ou de reiniciar o Windows.
 ## Requisitos
 
 - Windows 11 Home ou Pro (24H2 ou superior para o `sudo` do Windows); a versão Pro precisa do Pro, Enterprise ou Education
@@ -74,7 +108,7 @@ powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 | Parâmetro | Uso |
 |---|---|
 | `-Versao Perguntar\|Home\|Pro` | Versão do Windows (padrão: pergunta no início) |
-| `-WslMemoryGB <n>` | Limita a memória do WSL em qualquer máquina |
+| `-WslMemoryGB <n>` | Memória do WSL em GB (padrão: 6 GB, sem passar da metade da RAM; no ROG Ally, 25% da RAM). Veja [Limite de memória](#limite-de-memória) |
 | `-SkipApps` | Não instala o grupo "Pessoal / Opcional" |
 | `-UpgradeAll` | Também roda `winget upgrade --all` |
 | `-SkipWindowsFeatures` | Não mexe nos recursos do Windows |
@@ -86,7 +120,7 @@ powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 1. **Pré-requisitos**: Windows 11, dispositivo, versão, winget, reinicialização pendente, ExecutionPolicy e PSGallery.
 2. **Recursos do Windows**: WSL e Plataforma de Máquina Virtual; na Pro também Hyper-V e Área Restrita; Cliente Telnet nas duas.
 3. **WSL2**: `wsl --update` e WSL 2 como padrão; na Pro também instala o Ubuntu 26.04.
-4. **Memória do WSL**: limite opcional com `-WslMemoryGB`.
+4. **Configuração do WSL**: grava o `.wslconfig` com rede espelhada, DNS e proxy do Windows, limites de memória e processadores, recuperação de memória e disco esparso (veja [Configuração do WSL](#configuração-do-wsl-wslconfig)).
 5. **Remover apps pré-instalados**: LinkedIn, Paciência, Notícias (Microsoft Start), Pesquisa do Bing, Hub de Comentários, Family Safety, Clipchamp, Notas Autoadesivas, Clima, Dicas, Microsoft 365, Teams e Outlook pessoais, Spotify, TikTok, WhatsApp e outros, do usuário e da imagem do Windows. Também desliga a pesquisa web do Bing no Iniciar e impede que o Windows reinstale apps sugeridos.
 6. **Ferramentas e aplicativos (winget)**: os grupos das duas versões e os da versão escolhida.
 7. **Docker Desktop e k3d** (Home): seu usuário no grupo `docker-users`.

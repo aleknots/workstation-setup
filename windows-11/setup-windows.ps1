@@ -15,9 +15,10 @@
             Vagrant, Packer e Multipass. Depois, configure o Ubuntu com o playbook
             ubuntu-26.04-wsl2. Só nas edições com Hyper-V (Pro, Enterprise, Education).
 
-    O que depende da máquina é detectado:
-    - ROG Ally / Ally X / Xbox Ally: limita a memória do WSL (Ubuntu ou Docker Desktop),
-    que divide a RAM com a GPU
+    .wslconfig nas duas versões: rede espelhada, DNS e proxy do Windows, memória e
+    processadores limitados, recuperação de memória e disco esparso. A memória padrão é
+    6 GB (sem passar da metade da RAM); no ROG Ally / Ally X / Xbox Ally, 25% da RAM
+    (mínimo 4 GB), porque ela é dividida com a GPU.
 
     Nas duas versões:
     - CLIs de Kubernetes, Terraform, Headlamp, kubeseal e Argo Rollouts no Windows
@@ -36,8 +37,8 @@
 
 
 .PARAMETER WslMemoryGB
-    Limite de memória do WSL em GB. Sem ele, o limite só é aplicado no ROG Ally
-    (25% da RAM, mínimo 4 GB); nas outras máquinas fica o padrão do WSL.
+    Limite de memória do WSL em GB. Sem ele: 6 GB, sem passar da metade da RAM; no
+    ROG Ally, 25% da RAM (mínimo 4 GB).
 
 .PARAMETER UpgradeAll
     Ao final, também atualiza todos os aplicativos com `winget upgrade --all`.
@@ -212,40 +213,39 @@ $WslDistro = 'Ubuntu-26.04'
 # fixa e faz um winget pin para o upgrade --all não trocá-la.
 $WingetPackages = [ordered]@{
     'Trabalho / DevOps / SRE' = @(
-        'Anysphere.Cursor'                       # cursoride
-        'Hashicorp.Vagrant'                      # vagrant
-        'Microsoft.AzureCLI'                     # azure-cli
-        'Microsoft.Azure.StorageExplorer'        # microsoftazurestorageexplorer
-        'SlackTechnologies.Slack'                # slack
-        'Microsoft.Teams'                        # microsoft-teams-new-bootstrapper
+       # 'Anysphere.Cursor'                       # cursoride
+       # 'Hashicorp.Vagrant'                      # vagrant
+       # 'Microsoft.AzureCLI'                     # azure-cli
+       # 'Microsoft.Azure.StorageExplorer'        # microsoftazurestorageexplorer
+       # 'SlackTechnologies.Slack'                # slack
+       # 'Microsoft.Teams'                        # microsoft-teams-new-bootstrapper
         'Microsoft.VisualStudioCode'             # vscode
         'Google.Antigravity'                     # antigravity
         'Anthropic.ClaudeCode'                   # claude-code
         'Git.Git'                                # git
         'Hashicorp.Terraform'                    # terraform
-        'Amazon.AWSCLI'                          # awscli
+        # 'Amazon.AWSCLI'                          # awscli
         'argoproj.argocd'                        # argocd-cli
         'Derailed.k9s'                           # k9s
         'Helm.Helm'                              # kubernetes-helm
-        'Postman.Postman'                        # postman
-        'xAI.GrokBuild'                          # CLI do Grok (comando grok)
-        'Microsoft.Azure.Kubelogin'              # login nos clusters AKS
-        'Google.CloudSDK'                        # gcloud
+        #'Postman.Postman'                        # postman
+        #'Microsoft.Azure.Kubelogin'              # login nos clusters AKS
+        #'Google.CloudSDK'                        # gcloud
         # azurepowershell: é o módulo Az, na lista $PSModules
     )
     'Pessoal / Opcional' = @(
-        'Discord.Discord'                        # discord
-        'EpicGames.EpicGamesLauncher'            # epicgameslauncher
+        #'Discord.Discord'                        # discord
+        #'EpicGames.EpicGamesLauncher'            # epicgameslauncher
         'Valve.Steam'                            # steam
-        'Piriform.CCleaner'                      # ccleaner
-        'Zoom.Zoom'                              # zoom
-        'Google.Chrome'                          # googlechrome
-        'Mozilla.Firefox'                        # firefox
-        'Devolutions.RemoteDesktopManager'       # rdm
-        'Microsoft.PowerToys'                    # powertoys
+        #'Piriform.CCleaner'                      # ccleaner
+        #'Zoom.Zoom'                              # zoom
+        #'Google.Chrome'                          # googlechrome
+        #'Mozilla.Firefox'                        # firefox
+        #'Devolutions.RemoteDesktopManager'       # rdm
+        #'Microsoft.PowerToys'                    # powertoys
         'RiotGames.Valorant.BR'                  # valorant (servidor BR; troque o sufixo se precisar)
         'Google.GoogleDrive'                     # googledrive
-        'OBSProject.OBSStudio'                   # obs-studio
+        #'OBSProject.OBSStudio'                   # obs-studio
         'Notion.Notion'                          # notion
         'Obsidian.Obsidian'                      # obsidian
         'Microsoft.EdgeWebView2Runtime'          # webview2-runtime
@@ -364,6 +364,8 @@ $PSModules = @(
 # até 50% dela e disputar memória com os jogos.
 $WslMemoryShare = 0.25   # fração da RAM para o WSL
 $WslMemoryMinGB = 4
+$WslMemoryDefaultGB = 6      # nos outros PCs, sem passar da metade da RAM
+$WslProcessorsDefault = 6
 
 $GitGlobalConfig = [ordered]@{
     'init.defaultBranch'     = 'main'
@@ -1020,44 +1022,79 @@ function Step-DockerDesktop {
 function Step-WslConfig {
     $path = Join-Path $env:USERPROFILE '.wslconfig'
     $ramGB = [math]::Round($ComputerInfo.TotalPhysicalMemory / 1GB)
+    $cpus = [int]$ComputerInfo.NumberOfLogicalProcessors
 
-    $lines = [Collections.Generic.List[string]]::new([string[]]@(if (Test-Path $path) { Get-Content $path }))
-
-    # No desktop, instanceIdleTimeout=-1 deixa o terminal instantâneo; no Ally mantém o
-    # Ubuntu ocupando RAM e bateria mesmo sem uso
-    if ($IsRogAlly -and $lines -match '^\s*instanceIdleTimeout\s*=\s*-1') {
-        Write-Item Warn 'instanceIdleTimeout=-1 no .wslconfig' 'mantém o Ubuntu ligado e gasta bateria; considere remover'
-    }
-
-    # O limite só é aplicado no ROG Ally ou quando -WslMemoryGB é informado
-    $limitGB = if ($WslMemoryGB) { $WslMemoryGB }
+    # Memória: -WslMemoryGB; no ROG Ally 25% da RAM (mínimo 4 GB); nos outros PCs
+    # $WslMemoryDefaultGB, sem passar da metade da RAM
+    $memoryGB = if ($WslMemoryGB) { $WslMemoryGB }
     elseif ($IsRogAlly) { [math]::Max($WslMemoryMinGB, [math]::Floor($ramGB * $WslMemoryShare)) }
-    if (-not $limitGB) {
-        Write-Item Skip 'Limite de memória do WSL' "padrão do WSL (até 50% de $ramGB GB); use -WslMemoryGB para limitar"
+    else { [math]::Max(2, [math]::Min($WslMemoryDefaultGB, [math]::Floor($ramGB / 2))) }
+    $processors = [math]::Max(1, [math]::Min($WslProcessorsDefault, $cpus))
+
+    $settings = [ordered]@{
+        'wsl2' = [ordered]@{
+            networkingMode = @('mirrored', '# Rede espelhada: o WSL usa o IP e as portas do Windows (localhost nos dois sentidos)')
+            dnsTunneling   = @('true', '# DNS resolvido pelo Windows: funciona com VPN e proxy')
+            autoProxy      = @('true', '# O WSL herda o proxy configurado no Windows')
+            firewall       = @('true', '# Regras do Firewall do Windows valem também para o WSL')
+            memory         = @("${memoryGB}GB", "# Limite de memória ($ramGB GB de RAM nesta máquina)")
+            processors     = @("$processors", "# Processadores lógicos para o WSL ($cpus nesta máquina)")
+        }
+        'general' = [ordered]@{
+            instanceIdleTimeout = @('-1', "# Mantém o WSL ligado quando ocioso: abrir um terminal fica instantâneo`n# em vez de reiniciar o systemd (4-7 s). -1 = nunca desligar.")
+        }
+        'experimental' = [ordered]@{
+            autoMemoryReclaim = @('gradual', "# Devolve ao Windows, aos poucos, a memória de cache que o WSL não está usando.`n# Importante com Docker/k3d ligados o dia todo.")
+            sparseVhd         = @('true', '# O disco virtual do WSL encolhe quando você apaga imagens e clusters.')
+        }
+    }
+    # No ROG Ally o WSL desliga quando ocioso, para não gastar RAM e bateria nos jogos
+    if ($IsRogAlly) { $settings['general'].Remove('instanceIdleTimeout') }
+
+    # Chaves que o setup não gerencia continuam no arquivo, na mesma seção
+    $existing = [ordered]@{}
+    $current = $null
+    if (Test-Path $path) {
+        foreach ($line in Get-Content $path) {
+            if ($line -match '^\s*\[([^\]]+)\]\s*$') { $current = $Matches[1].Trim(); if (-not $existing.Contains($current)) { $existing[$current] = [ordered]@{} } }
+            elseif ($current -and $line -match '^\s*([^#;=\s][^=]*?)\s*=\s*(.*?)\s*$') { $existing[$current][$Matches[1]] = $Matches[2] }
+        }
+    }
+    if ($IsRogAlly -and $existing['general'] -and $existing['general']['instanceIdleTimeout'] -eq '-1') {
+        Write-Item Warn 'instanceIdleTimeout=-1 no .wslconfig' 'mantém o WSL ligado e gasta bateria; considere remover'
+    }
+
+    $out = [Collections.Generic.List[string]]::new()
+    $out.Add('# Gerado pelo setup-windows.ps1. As chaves abaixo são reaplicadas a cada execução;')
+    $out.Add('# outras chaves que você adicionar são mantidas. Vale depois de: wsl --shutdown')
+    foreach ($section in @($settings.Keys) + @($existing.Keys | Where-Object { -not $settings.Contains($_) })) {
+        $out.Add('')
+        $out.Add("[$section]")
+        if ($settings.Contains($section)) {
+            foreach ($key in $settings[$section].Keys) {
+                $value, $comment = $settings[$section][$key]
+                $comment -split "`n" | ForEach-Object { $out.Add($_) }
+                $out.Add("$key=$value")
+            }
+        }
+        if ($existing.Contains($section)) {
+            foreach ($key in $existing[$section].Keys) {
+                if ($settings.Contains($section) -and $settings[$section].Contains($key)) { continue }
+                $out.Add("$key=$($existing[$section][$key])")
+            }
+        }
+    }
+
+    $text = ($out -join "`r`n") + "`r`n"
+    if ((Test-Path $path) -and (Get-Content $path -Raw) -eq $text) {
+        Write-Item Skip '.wslconfig' 'já configurado'
         return
     }
-
-    if ($lines -match '^\s*memory\s*=') {
-        Write-Item Skip 'Limite de memória do WSL' 'já definido no .wslconfig'
-        return
-    }
-
-    # memory= vai na seção [wsl2]; cria a seção se ela não existir
-    $section = $lines.FindIndex({ param($line) $line -match '^\s*\[wsl2\]\s*$' })
-    if ($section -ge 0) {
-        $lines.Insert($section + 1, "memory=${limitGB}GB")
-    }
-    else {
-        if ($lines.Count) { $lines.Add('') }
-        $lines.Add('[wsl2]')
-        $lines.Add("memory=${limitGB}GB")
-    }
-
     if (Test-Path $path) { Copy-Item $path "$path.bak-$Stamp" }
-    $lines | Set-Content -Path $path -Encoding utf8
-    Write-Item Ok 'Limite de memória do WSL' "$limitGB GB de $ramGB GB; vale depois de wsl --shutdown"
+    [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+    Write-Item Ok '.wslconfig' "rede espelhada, DNS e proxy do Windows, $memoryGB GB de $ramGB GB, $processors de $cpus processadores"
+    Write-Item Info 'Aplicação' 'vale depois de wsl --shutdown (ou ao reiniciar)'
 }
-
 # Pergunta a versão do Windows, a menos que venha por -Versao. Enter aceita a
 # versão que corresponde à edição detectada.
 function Select-Edition {
@@ -1141,7 +1178,7 @@ $Steps = @(
     @{ Title = 'Pré-requisitos';                      Action = { Step-Prerequisites }; Critical = $true }
     @{ Title = 'Recursos do Windows';                 Action = { Step-WindowsFeatures }; Skip = $SkipWindowsFeatures.IsPresent }
     @{ Title = $(if ($Edition -eq 'Pro') { "WSL2 e $WslDistro" } else { 'WSL2 (motor do Docker Desktop)' }); Action = { Step-WslUbuntu } }
-    @{ Title = 'Memória do WSL';                      Action = { Step-WslConfig } }
+    @{ Title = 'Configuração do WSL (.wslconfig)';    Action = { Step-WslConfig } }
     @{ Title = 'Remover apps pré-instalados';         Action = { Step-RemoveBloatware } }
     @{ Title = 'Ferramentas e aplicativos (winget)';  Action = { Step-CliTools } }
     @{ Title = 'Docker Desktop e k3d';                Action = { Step-DockerDesktop }; Skip = $Edition -ne 'Home' }

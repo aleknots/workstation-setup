@@ -70,7 +70,11 @@ Execute dentro da distribuição Ubuntu no WSL, na pasta deste playbook:
 ansible-playbook ubuntu-wsl-setup.yml
 ```
 
-O `ansible.cfg` da pasta já pede a senha do `sudo`. Para rodar só uma parte, use as tags:
+O `ansible.cfg` da pasta já pede a senha do `sudo` e usa o `inventory.ini` (apenas `localhost` com conexão local).
+
+> Clone o repositório dentro do Linux (ex.: `~/workstation-setup`), não em `/mnt/c/...`. Numa pasta do Windows o Ansible ignora o `ansible.cfg` por segurança (a pasta aparece como gravável por todos) e o playbook roda sem pedir a senha do `sudo`. Se precisar rodar de lá, use `ansible-playbook -i inventory.ini -K ubuntu-wsl-setup.yml`.
+
+Para rodar só uma parte, use as tags:
 
 ```bash
 ansible-playbook ubuntu-wsl-setup.yml --tags tools

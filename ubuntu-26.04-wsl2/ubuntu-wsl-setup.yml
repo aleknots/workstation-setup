@@ -502,6 +502,7 @@
             url: "{{ item.uris | regex_replace('/$', '') }}/dists/{{ item.suite }}/Release"
             method: HEAD
             status_code: [200, 403, 404]
+          check_mode: false   # só lê; roda também no --check
           loop: "{{ apt_repos }}"
           loop_control:
             label: "{{ item.name }}"
@@ -634,6 +635,8 @@
             name: k3s
             enabled: "{{ k3s_enable_on_boot | bool }}"
             state: "{{ 'started' if k3s_enable_on_boot | bool else omit }}"
+          # No --check o k3s não é instalado de fato, então o serviço ainda não existe
+          ignore_errors: "{{ ansible_check_mode }}"
 
     - name: AWS CLI v2
       tags: [cloud]
@@ -678,6 +681,7 @@
           ansible.builtin.uri:
             url: "https://api.github.com/repos/{{ item.repo }}/releases/{{ ('tags/' ~ item.version) if item.version is defined else 'latest' }}"
             headers: "{{ github_api_headers }}"
+          check_mode: false   # só lê; roda também no --check
           loop: "{{ github_tools }}"
           loop_control:
             label: "{{ item.name }}"
@@ -711,8 +715,15 @@
           ansible.builtin.set_fact:
             gh_pending: "{{ gh_plan | selectattr('pending') | list }}"
 
+        - name: Ferramentas que seriam instaladas ou atualizadas (--check)
+          ansible.builtin.debug:
+            msg: "{{ gh_pending | map(attribute='name') | zip(gh_pending | map(attribute='tag')) | map('join', ' ') | list }}"
+          when: ansible_check_mode and gh_pending | length > 0
+
         - name: Instalar ou atualizar ferramentas
-          when: gh_pending | length > 0
+          when:
+            - gh_pending | length > 0
+            - not ansible_check_mode
           block:
             - name: Criar diretório temporário das ferramentas
               ansible.builtin.tempfile:
@@ -803,6 +814,7 @@
           ansible.builtin.systemd_service:
             name: k3s
             state: started
+          ignore_errors: "{{ ansible_check_mode }}"
 
         - name: Aguardar o kubeconfig do k3s
           ansible.builtin.wait_for:
