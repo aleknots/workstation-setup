@@ -110,9 +110,14 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
             $asset = $release.assets | Where-Object { $_.name -match '^PowerShell-.*-win-x64\.msi$' } | Select-Object -First 1
             if (-not $asset) { throw 'MSI x64 não encontrado na última release do PowerShell.' }
             $msi = Join-Path $env:TEMP $asset.name
-            Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $msi
+            Write-Host ("  Baixando {0} ({1:N0} MB)..." -f $asset.name, ($asset.size / 1MB))
+            # O WebClient é bem mais rápido que o Invoke-WebRequest no Windows PowerShell 5.1
+            (New-Object Net.WebClient).DownloadFile($asset.browser_download_url, $msi)
+            Write-Host '  Instalando o MSI (leva 1 a 2 minutos, sem janela)...'
             $msiArgs = "/i `"$msi`" /qn ADD_PATH=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1"
             $process = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+            # 1618: outra instalação em andamento (ex.: Windows Update)
+            if ($process.ExitCode -eq 1618) { throw 'outra instalação está em andamento (Windows Update?); espere ela terminar e rode de novo' }
             Remove-Item $msi -Force -ErrorAction SilentlyContinue
             # 3010: instalado, requer reinicialização
             if ($process.ExitCode -notin 0, 3010) { throw "msiexec retornou $($process.ExitCode)" }
