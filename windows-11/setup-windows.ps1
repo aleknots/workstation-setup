@@ -89,30 +89,45 @@ $ProgressPreference = 'SilentlyContinue'
 
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $pwsh = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+    # Num Windows PowerShell de 32 bits, $env:ProgramFiles aponta para "Program Files (x86)"
+    $programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles }
+    $pwsh = Join-Path $programFiles 'PowerShell\7\pwsh.exe'
 
     Write-Host "`n==> Instalando o PowerShell 7 (x64)" -ForegroundColor Cyan
-    $installed = $false
-    if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
-        & winget install --id Microsoft.PowerShell --exact --source winget --architecture x64 --silent `
+    $wingetCode = $null
+    if (-not (Test-Path $pwsh) -and (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+        & winget install --id Microsoft.PowerShell --exact --source winget --architecture x64 --silent --scope machine `
             --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Null
-        # 0x8A15002B: nenhuma atualização disponível; 0x8A150061: já instalado
-        $installed = $LASTEXITCODE -in 0, -1978335189, -1978335135
+        $wingetCode = '0x{0:X8}' -f $LASTEXITCODE
     }
-    if (-not $installed) {
-        Write-Host '  winget indisponível ou com erro; baixando o MSI oficial do GitHub...' -ForegroundColor Yellow
-        $release = Invoke-RestMethod -UseBasicParsing -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
-        $asset = $release.assets | Where-Object { $_.name -match '^PowerShell-.*-win-x64\.msi$' } | Select-Object -First 1
-        if (-not $asset) { throw 'MSI x64 não encontrado na última release do PowerShell.' }
-        $msi = Join-Path $env:TEMP $asset.name
-        Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $msi
-        $msiArgs = "/i `"$msi`" /qn ADD_PATH=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1"
-        $process = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
-        Remove-Item $msi -Force -ErrorAction SilentlyContinue
-        # 3010: instalado, requer reinicialização
-        if ($process.ExitCode -notin 0, 3010) { throw "msiexec retornou $($process.ExitCode)" }
+    # O winget pode dizer "já instalado" (0x8A150061) por causa do PowerShell da Microsoft
+    # Store, que não fica em Program Files; nesse caso, ou com erro, instala o MSI oficial.
+    if (-not (Test-Path $pwsh)) {
+        $reason = if ($wingetCode) { "winget retornou $wingetCode" } else { 'winget indisponível' }
+        Write-Host "  $reason e o pwsh.exe não está em Program Files; baixando o MSI oficial do GitHub..." -ForegroundColor Yellow
+        try {
+            $release = Invoke-RestMethod -UseBasicParsing -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
+            $asset = $release.assets | Where-Object { $_.name -match '^PowerShell-.*-win-x64\.msi$' } | Select-Object -First 1
+            if (-not $asset) { throw 'MSI x64 não encontrado na última release do PowerShell.' }
+            $msi = Join-Path $env:TEMP $asset.name
+            Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $msi
+            $msiArgs = "/i `"$msi`" /qn ADD_PATH=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1"
+            $process = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+            Remove-Item $msi -Force -ErrorAction SilentlyContinue
+            # 3010: instalado, requer reinicialização
+            if ($process.ExitCode -notin 0, 3010) { throw "msiexec retornou $($process.ExitCode)" }
+        }
+        catch { Write-Host "  [!!] MSI: $($_.Exception.Message)" -ForegroundColor Yellow }
     }
-    if (-not (Test-Path $pwsh)) { throw 'O PowerShell 7 não foi instalado. Veja as mensagens acima.' }
+    if (-not (Test-Path $pwsh)) {
+        # Último recurso: outro PowerShell 7 do PATH (ex.: o da Microsoft Store), de
+        # preferência o de 64 bits
+        $found = @(Get-Command pwsh.exe -All -ErrorAction SilentlyContinue) |
+            Sort-Object { $_.Source -match 'x86' } | Select-Object -First 1
+        if (-not $found) { throw 'O PowerShell 7 não foi instalado. Veja as mensagens acima.' }
+        $pwsh = $found.Source
+        Write-Host "  [!!] Usando o PowerShell 7 encontrado no PATH: $pwsh" -ForegroundColor Yellow
+    }
     Write-Host "  [OK] PowerShell $(& $pwsh -NoProfile -NoLogo -Command '$PSVersionTable.PSVersion.ToString()')" -ForegroundColor Green
 
     $x86 = Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
