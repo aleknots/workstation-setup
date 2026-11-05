@@ -168,6 +168,14 @@ Por padrão **todos os apps estão ativos**. Antes de rodar, abra o `setup-windo
 
 Para não instalar nada do grupo "Pessoal / Opcional", use `-SkipApps`. Os apps já instalados não são removidos quando você comenta a linha.
 
+### Rodar de novo
+
+O setup pode ser executado quantas vezes quiser: o que já está instalado ou configurado é pulado (`já instalado` / `já configurado`) e nada é reinstalado. Os apps só são atualizados com `-UpgradeAll`.
+
+- Cada instalação do winget tem limite de 20 minutos (`$WingetInstallTimeoutMinutes`). Alguns instaladores, como os de launchers de jogos, abrem o app e não terminam; passado o limite, o instalador é encerrado, o app aparece como falha no resumo e o setup segue para o próximo.
+- Sem acesso ao GitHub, o kubeseal e o kubectl-argo-rollouts já instalados são mantidos, com um aviso.
+- Se o Oh My Posh estiver comentado, a etapa da Nerd Font é pulada com um aviso.
+
 Os apps pré-instalados que o setup remove ficam na lista `$BloatwareApps`, do mesmo jeito: para **manter** um deles (ex.: Relógio ou Media Player), comente a linha. Loja, Calculadora, Fotos, Bloco de Notas, Paint, Ferramenta de Captura, Câmera, Terminal, Edge e os apps do Xbox nunca são removidos. Um app removido pode ser reinstalado pela Microsoft Store.
 
 ## Perfil do PowerShell 7

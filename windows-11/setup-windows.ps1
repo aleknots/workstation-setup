@@ -389,6 +389,10 @@ $WingetNoop = @(
     0x8A150061   # APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
     0x8A15002B   # APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE
 )
+# Tempo máximo de cada instalação do winget. Alguns instaladores (launchers de jogos)
+# abrem o app e não terminam; passado o limite, o instalador é encerrado e o setup segue.
+$WingetInstallTimeoutMinutes = 20
+$WingetTimedOut = -1
 
 $Stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $LogDir = Join-Path $env:TEMP "setup-windows-$Stamp"
@@ -553,9 +557,28 @@ function Test-PendingReboot {
 }
 
 function Invoke-Winget {
-    param([Parameter(Mandatory)][string[]]$Arguments)
-    $output = & winget @Arguments --accept-source-agreements --disable-interactivity 2>&1
-    $exitCode = $LASTEXITCODE
+    param([Parameter(Mandatory)][string[]]$Arguments, [int]$TimeoutMinutes = 0)
+    $Arguments += '--accept-source-agreements', '--disable-interactivity'
+    if ($TimeoutMinutes -le 0) {
+        $output = & winget @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    else {
+        $outFile = Join-Path $LogDir 'winget-current.out'
+        $process = Start-Process winget.exe -ArgumentList $Arguments -NoNewWindow -PassThru `
+            -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err"
+        $null = $process.Handle   # sem isso o ExitCode pode vir vazio
+        if ($process.WaitForExit($TimeoutMinutes * 60000)) {
+            $exitCode = $process.ExitCode
+        }
+        else {
+            # Encerra o winget e o instalador que ele abriu
+            try { $process.Kill($true) } catch { }
+            $exitCode = $WingetTimedOut
+        }
+        $output = Get-Content $outFile, "$outFile.err" -ErrorAction Ignore
+        Remove-Item $outFile, "$outFile.err" -Force -ErrorAction Ignore
+    }
     "`n### winget $($Arguments -join ' ') => $exitCode`n$($output -join "`n")" |
         Out-File -FilePath $WingetLog -Append -Encoding utf8
     $exitCode
@@ -569,8 +592,11 @@ function Install-WingetPackage([string]$Spec) {
     }
     $arguments = @('install', '--id', $id, '--exact', '--source', 'winget', '--silent', '--accept-package-agreements')
     if ($version) { $arguments += '--version', $version }
-    $code = Invoke-Winget $arguments
-    if ($code -eq 0) {
+    $code = Invoke-Winget $arguments -TimeoutMinutes $WingetInstallTimeoutMinutes
+    if ($code -eq $WingetTimedOut) {
+        Write-Item Fail $id "passou de $WingetInstallTimeoutMinutes min e foi encerrado; instale manualmente ou rode o setup de novo"
+    }
+    elseif ($code -eq 0) {
         if ($version) {
             $null = Invoke-Winget 'pin', 'add', '--id', $id, '--exact', '--version', $version
             Write-Item Ok $id "instalado na $version (fixado)"
@@ -823,7 +849,10 @@ function Step-NerdFont {
         Write-Item Skip $FontFace 'já instalada'
         return
     }
-    if (-not (Test-Cmd oh-my-posh)) { throw 'oh-my-posh não encontrado no PATH' }
+    if (-not (Test-Cmd oh-my-posh)) {
+        Write-Item Warn $FontFace 'pulada: o oh-my-posh (JanDeDobbeleer.OhMyPosh) não está instalado'
+        return
+    }
 
     $null = & oh-my-posh font install meslo 2>&1
     if ($LASTEXITCODE -eq 0) { Write-Item Ok $FontFace 'instalada via oh-my-posh' }
@@ -936,11 +965,11 @@ function Step-GitHubTools {
     }
 
     foreach ($tool in $GitHubTools) {
+        $target = Join-Path $GitHubToolsDir "$($tool.Name).exe"
+        # A tag instalada fica ao lado do binário; só baixa de novo quando sai versão nova
+        $versionFile = "$target.version"
         try {
             $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$($tool.Repo)/releases/latest" -Headers @{ Accept = 'application/vnd.github+json' }
-            $target = Join-Path $GitHubToolsDir "$($tool.Name).exe"
-            # A tag instalada fica ao lado do binário; só baixa de novo quando sai versão nova
-            $versionFile = "$target.version"
             if ((Test-Path $target) -and (Test-Path $versionFile) -and (Get-Content $versionFile -Raw).Trim() -eq $release.tag_name) {
                 Write-Item Skip $tool.Name "$($release.tag_name) já instalado"
                 continue
@@ -966,7 +995,12 @@ function Step-GitHubTools {
             Write-Item Ok $tool.Name "$($release.tag_name) instalado"
         }
         catch {
-            Write-Item Fail $tool.Name $_.Exception.Message
+            # Já instalado: sem acesso ao GitHub, mantém a versão atual
+            if (Test-Path $target) {
+                $installed = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { 'versão instalada' }
+                Write-Item Warn $tool.Name "mantido $installed; não foi possível verificar versão nova ($($_.Exception.Message))"
+            }
+            else { Write-Item Fail $tool.Name $_.Exception.Message }
         }
     }
     Update-SessionPath
