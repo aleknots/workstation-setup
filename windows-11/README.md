@@ -31,7 +31,7 @@ Versão do Windows (detectada: Windows 11 Pro)
 | Apps de trabalho e pessoais (incluindo os jogos) | ✓ | ✓ |
 | Remoção dos apps pré-instalados (LinkedIn, Paciência, Notícias, Family, Clipchamp...) e da pesquisa web do Bing | ✓ | ✓ |
 | sudo do Windows, Finalizar Tarefa e painel de detalhes do Explorer | ✓ | ✓ |
-| Aparência leve (sem animações, transparência, Widgets e anúncios) | ✓ | — |
+| Aparência leve (sem animações, transparência e anúncios; Widgets ativos com o tempo) | ✓ | — |
 | WSL2 | ✓ (motor do Docker Desktop) | ✓ |
 | Docker Desktop + k3d (k3s em contêineres) | ✓ | — |
 | Ubuntu 26.04 no WSL2 (Docker e k3s pelo playbook) | — | ✓ |
@@ -127,7 +127,7 @@ powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 8. **CLIs do Kubernetes (GitHub Releases)**: `kubeseal` e `kubectl-argo-rollouts`, que não estão no winget.
 9. **Hyper-V e VMs** (Pro): grupo Administradores do Hyper-V e o Hyper-V como provider padrão do Vagrant.
 10. **Ajustes de desenvolvedor**: Finalizar Tarefa na barra de tarefas, `sudo` do Windows ativado (modo inline), painel de detalhes do Explorer com a pré-visualização da imagem (`Alt+Shift+P`), extensões e arquivos ocultos visíveis, caminhos longos, modo de desenvolvedor e defaults do git.
-11. **Aparência leve** (Home): efeitos visuais em melhor desempenho (mantendo a suavização de fontes e as miniaturas), sem transparência, sem atraso nos apps de inicialização, sem Widgets e sem sugestões e anúncios no Iniciar. Vale no próximo login.
+11. **Aparência leve** (Home): efeitos visuais em melhor desempenho (mantendo a suavização de fontes e as miniaturas), sem transparência, sem atraso nos apps de inicialização e sem sugestões e anúncios no Iniciar. Os Widgets continuam ativos, com o tempo na barra de tarefas. Vale no próximo login.
 12. **Fonte Nerd Font**: MesloLGM Nerd Font.
 13. **Módulos do PowerShell**: PSReadLine, Terminal-Icons, PSFzf, CompletionPredictor e Az.
 14. **Windows Terminal**: PowerShell 7 como padrão e a Nerd Font (com backup do `settings.json`).
@@ -142,7 +142,7 @@ A lista `$WingetPackages` segue a mesma ordem da lista antiga do Chocolatey, com
 
 | Grupo | Versão | Pacotes |
 |---|---|---|
-| Trabalho / DevOps / SRE | Home e Pro | Cursor, Vagrant, Azure CLI, Azure Storage Explorer, Slack, Teams, VS Code, Antigravity, Claude Code, Git, Terraform, AWS CLI, Argo CD CLI, k9s, Helm, Postman, Grok CLI, kubelogin, Google Cloud SDK |
+| Trabalho / DevOps / SRE | Home e Pro | Cursor, Vagrant, Azure CLI, Azure Storage Explorer, Slack, Teams, VS Code, Antigravity, Claude Code (CLI), Claude (app desktop), Git, Terraform, AWS CLI, Argo CD CLI, k9s, Helm, Postman, Grok CLI, kubelogin, Google Cloud SDK |
 | Pessoal / Opcional | Home e Pro | Discord, Epic Games, Steam, CCleaner, Zoom, Chrome, Firefox, Remote Desktop Manager, PowerToys, Valorant (servidor BR), Google Drive, OBS Studio, Notion, Obsidian, WebView2 Runtime, Sublime Text 4, Oh My Posh, TreeSize Free, Roblox, Flameshot 12.1.0 |
 | Terminal e shell | Home e Pro | PowerShell 7, Windows Terminal, GitHub CLI, Neovim, fzf, zoxide, eza, ripgrep, fd, bat, delta, jq, yq |
 | Kubernetes | Home e Pro | kubectl, kubectx, kubens, stern, Headlamp |

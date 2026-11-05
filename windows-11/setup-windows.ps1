@@ -222,6 +222,7 @@ $WingetPackages = [ordered]@{
         'Microsoft.VisualStudioCode'             # vscode
         'Google.Antigravity'                     # antigravity
         'Anthropic.ClaudeCode'                   # claude-code
+        'Anthropic.Claude'                       # claude (app desktop)
         'Git.Git'                                # git
         'Hashicorp.Terraform'                    # terraform
         # 'Amazon.AWSCLI'                          # awscli
@@ -796,8 +797,14 @@ function Step-LightAppearance {
         -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
     Set-RegistryDword -Label 'Sem atraso nos apps de inicialização' -Value 0 -Name 'StartupDelayInMSec' `
         -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize'
-    Set-RegistryDword -Label 'Sem Widgets (notícias) na barra de tarefas' -Value 0 -Name 'AllowNewsAndInterests' `
-        -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh'
+    # Widgets ligados: o botão da barra de tarefas mostra o tempo. Remove a política
+    # que os desligava (gravada por versões anteriores deste setup).
+    $dsh = 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh'
+    if ((Get-ItemProperty $dsh -Name AllowNewsAndInterests -ErrorAction Ignore).AllowNewsAndInterests -eq 0) {
+        Remove-ItemProperty $dsh -Name AllowNewsAndInterests
+        Write-Item Ok 'Widgets (tempo na barra de tarefas)' 'reativados'
+    }
+    else { Write-Item Skip 'Widgets (tempo na barra de tarefas)' 'já ativos' }
     Set-RegistryDword -Label 'Sem sugestões e anúncios no Iniciar' -Value 0 -Name 'SubscribedContent-338388Enabled' `
         -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
     Set-RegistryDword -Value 0 -Name 'SystemPaneSuggestionsEnabled' `
