@@ -1,0 +1,600 @@
+- name: Configuração DevOps/SRE Bazzite Deck GNOME (amd64)
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+
+  vars:
+    ansible_become_flags: "-H -S"
+
+    # O playbook roda como o usuário comum (nunca com sudo): o Homebrew recusa root.
+    target_user: "{{ ansible_facts['user_id'] }}"
+    target_home: "{{ ansible_facts['user_dir'] }}"
+    target_uid: "{{ ansible_facts['user_uid'] }}"
+
+    brew_prefix: /home/linuxbrew/.linuxbrew
+    flatpak_exports: /var/lib/flatpak/exports/share/applications
+
+
+    configure_passwordless_sudo: false
+    overwrite_zshrc: false
+    configure_gnome_app_folders: true
+
+    # O Bazzite já se atualiza sozinho; com true o playbook também roda
+    # "rpm-ostree upgrade", "flatpak update" e "brew upgrade".
+    run_system_update: false
+
+    # Docker Engine entra como camada rpm-ostree (exige reinicialização).
+    install_docker: true
+
+    # true = VS Code como RPM em camada (enxerga as ferramentas do host).
+    # false = VS Code em Flatpak (sem camada, mas isolado em sandbox).
+    install_vscode_rpm: true
+
+    # Pacotes que precisam estar no host. Só o que faltar na imagem vira camada.
+    layered_base_packages:
+      - zsh
+
+    docker_packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+
+    layered_packages: >-
+      {{
+        layered_base_packages
+        + (docker_packages if install_docker | bool else [])
+        + (['code'] if install_vscode_rpm | bool else [])
+      }}
+
+    brew_taps:
+      - hashicorp/tap
+
+    brew_packages:
+      - argocd
+      - bat
+      - btop
+      - fastfetch
+      - fd
+      - fzf
+      - gh
+      - hashicorp/tap/terraform
+      - helm
+      - httpie
+      - iftop
+      - jq
+      # k3d: clusters k3s dentro de contêineres Docker (substitui o k3s no host)
+      - k3d
+      - k9s
+      - kubectx
+      - kubernetes-cli
+      - mtr
+      - ncdu
+      - nmap
+      - ripgrep
+      - speedtest-cli
+      - tmux
+      - tree
+      - vim
+      - wget
+      - whois
+      - yq
+
+    flatpak_base_apps:
+      - com.google.Chrome
+      - com.sublimetext.three
+      - com.getpostman.Postman
+      - org.flameshot.Flameshot
+      - org.gnome.Connections
+
+    flatpak_apps: >-
+      {{
+        flatpak_base_apps
+        + ([] if install_vscode_rpm | bool else ['com.visualstudio.code'])
+      }}
+
+    gnome_app_folders:
+      - id: devops
+        name: DevOps
+        patterns:
+          - /usr/share/applications/code.desktop
+          - "{{ flatpak_exports }}/com.visualstudio.code.desktop"
+          - "{{ flatpak_exports }}/com.sublimetext.three.desktop"
+          - "{{ flatpak_exports }}/com.google.Chrome.desktop"
+          - "{{ flatpak_exports }}/com.getpostman.Postman.desktop"
+      - id: remote
+        name: Remote Access
+        patterns:
+          - "{{ flatpak_exports }}/org.gnome.Connections.desktop"
+      - id: media
+        name: Media
+        patterns:
+          - "{{ flatpak_exports }}/org.flameshot.Flameshot.desktop"
+
+  pre_tasks:
+    - name: Ler /etc/os-release
+      ansible.builtin.slurp:
+        src: /etc/os-release
+      register: os_release_raw
+
+    - name: Ler informações da imagem Universal Blue
+      ansible.builtin.slurp:
+        src: /usr/share/ublue-os/image-info.json
+      register: image_info_raw
+      failed_when: false
+
+    - name: Definir fatos da imagem
+      ansible.builtin.set_fact:
+        os_release_text: "{{ os_release_raw.content | b64decode }}"
+        image_name: >-
+          {{
+            ((image_info_raw.content | b64decode | from_json)['image-name'] | default('desconhecida'))
+            if image_info_raw.content is defined else 'desconhecida'
+          }}
+
+    - name: Exibir detalhes da imagem detectada
+      ansible.builtin.debug:
+        msg:
+          - "Distribuição: {{ ansible_facts['distribution'] | default('N/A') }} {{ ansible_facts['distribution_version'] | default('') }}"
+          - "Imagem: {{ image_name }}"
+          - "Arquitetura: {{ ansible_facts['architecture'] }}"
+          - "Usuário: {{ target_user }} ({{ target_home }})"
+
+    - name: Validar Bazzite amd64 executado como usuário comum
+      ansible.builtin.assert:
+        that:
+          - os_release_text is search('(?m)^ID="?bazzite"?\s*$')
+          - ansible_facts['architecture'] == 'x86_64'
+          - target_user != 'root'
+        fail_msg: >-
+          Este playbook é apenas para Bazzite (amd64) e deve ser executado
+          como usuário comum, sem sudo (use -K para a senha do become).
+          Detectado: {{ ansible_facts['distribution'] | default('') }}
+          {{ ansible_facts['architecture'] }}, usuário {{ target_user }}.
+
+    - name: Avisar se a imagem não for a Deck GNOME
+      ansible.builtin.debug:
+        msg: >-
+          AVISO: a imagem detectada é "{{ image_name }}", não "bazzite-deck-gnome".
+          O playbook continua, mas foi escrito para a variante Deck com GNOME.
+      when: not (image_name is search('deck') and image_name is search('gnome'))
+
+    - name: Verificar se o Homebrew está disponível
+      ansible.builtin.stat:
+        path: "{{ brew_prefix }}/bin/brew"
+      register: brew_bin
+
+    - name: Exigir o Homebrew
+      ansible.builtin.assert:
+        that:
+          - brew_bin.stat.exists
+        fail_msg: >-
+          Homebrew não encontrado em {{ brew_prefix }}. O Bazzite já o traz
+          instalado; se foi removido, reinstale com o instalador oficial de
+          https://brew.sh e rode o playbook de novo.
+
+    - name: Garantir diretórios locais do usuário
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ target_home }}/.local/bin"
+        - "{{ target_home }}/.local/share/fonts"
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # Camadas rpm-ostree: só entram depois de reiniciar. Na primeira execução o
+    # playbook agenda as camadas e pula o que depende delas; após o reboot, uma
+    # segunda execução conclui (Docker, grupo docker, zsh como shell padrão).
+    # -------------------------------------------------------------------------
+    - name: Preparar camadas rpm-ostree
+      tags:
+        - layering
+      block:
+        - name: Adicionar repositório do Docker
+          ansible.builtin.get_url:
+            url: https://download.docker.com/linux/fedora/docker-ce.repo
+            dest: /etc/yum.repos.d/docker-ce.repo
+            mode: "0644"
+          become: true
+          when: install_docker | bool
+
+        - name: Adicionar repositório do Visual Studio Code
+          ansible.builtin.yum_repository:
+            name: code
+            file: vscode
+            description: Visual Studio Code
+            baseurl: https://packages.microsoft.com/yumrepos/vscode
+            gpgkey: https://packages.microsoft.com/keys/microsoft.asc
+            gpgcheck: true
+            enabled: true
+          become: true
+          when: install_vscode_rpm | bool
+
+        - name: Verificar pacotes RPM já presentes no sistema
+          ansible.builtin.command: "rpm -q {{ item }}"
+          loop: "{{ layered_packages }}"
+          register: rpm_check
+          changed_when: false
+          failed_when: false
+
+        - name: Consultar implantações do rpm-ostree
+          ansible.builtin.command: rpm-ostree status --json
+          register: ostree_status
+          changed_when: false
+
+        - name: Calcular pacotes ausentes e já agendados
+          ansible.builtin.set_fact:
+            rpm_missing: >-
+              {{
+                rpm_check.results
+                | selectattr('rc', 'ne', 0)
+                | map(attribute='item')
+                | list
+              }}
+            rpm_requested: >-
+              {{
+                (ostree_status.stdout | from_json).deployments[0]['requested-packages']
+                | default([])
+              }}
+
+        - name: Calcular pacotes a adicionar em camada
+          ansible.builtin.set_fact:
+            rpm_to_layer: "{{ rpm_missing | difference(rpm_requested) }}"
+            reboot_required: "{{ rpm_missing | length > 0 }}"
+            docker_ready: "{{ (install_docker | bool) and ('docker-ce' not in rpm_missing) }}"
+
+        - name: Adicionar pacotes em camada com rpm-ostree
+          ansible.builtin.command:
+            argv: "{{ ['rpm-ostree', 'install', '--idempotent', '--allow-inactive', '-y'] + rpm_to_layer }}"
+          become: true
+          changed_when: true
+          when: rpm_to_layer | length > 0
+
+        - name: Atualizar a imagem do sistema
+          ansible.builtin.command: rpm-ostree upgrade
+          become: true
+          register: ostree_upgrade
+          changed_when: "'No upgrade available' not in ostree_upgrade.stdout"
+          when: run_system_update | bool
+
+    - name: Adicionar usuário ao grupo docker
+      become: true
+      when: install_docker | bool
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          changed=0
+          if ! getent group docker >/dev/null; then
+            groupadd -r docker
+            changed=1
+          fi
+          # Em sistemas atômicos os grupos da imagem ficam em /usr/lib/group;
+          # o usermod só enxerga os que estão em /etc/group.
+          if ! grep -q "^docker:" /etc/group; then
+            getent group docker >> /etc/group
+            changed=1
+          fi
+          if ! id -nG "{{ target_user }}" | tr ' ' '\n' | grep -qx docker; then
+            usermod -aG docker "{{ target_user }}"
+            changed=1
+          fi
+          [ "$changed" -eq 1 ] && echo GROUPS_CHANGED || true
+        executable: /bin/bash
+      register: groups_setup
+      changed_when: "'GROUPS_CHANGED' in groups_setup.stdout"
+
+    - name: Habilitar e iniciar serviço do Docker
+      become: true
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+      when: docker_ready | default(false) | bool
+
+    # -------------------------------------------------------------------------
+    # Homebrew: ferramentas de linha de comando (sem root, sem camadas)
+    # -------------------------------------------------------------------------
+    - name: Instalar ferramentas de terminal via Homebrew
+      tags:
+        - brew
+      block:
+        - name: Adicionar taps do Homebrew
+          community.general.homebrew_tap:
+            name: "{{ brew_taps }}"
+            state: present
+            path: "{{ brew_prefix }}/bin"
+
+        - name: Instalar pacotes do Homebrew
+          community.general.homebrew:
+            name: "{{ brew_packages }}"
+            state: present
+            path: "{{ brew_prefix }}/bin"
+
+        - name: Atualizar pacotes do Homebrew
+          community.general.homebrew:
+            update_homebrew: true
+            upgrade_all: true
+            path: "{{ brew_prefix }}/bin"
+          when: run_system_update | bool
+
+    # -------------------------------------------------------------------------
+    # Flatpak: aplicações de desktop
+    # -------------------------------------------------------------------------
+    - name: Instalar aplicações de desktop via Flatpak
+      become: true
+      tags:
+        - flatpak
+      block:
+        - name: Garantir o repositório Flathub
+          community.general.flatpak_remote:
+            name: flathub
+            state: present
+            flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+            method: system
+
+        - name: Instalar Flatpaks
+          community.general.flatpak:
+            name: "{{ flatpak_apps }}"
+            state: present
+            remote: flathub
+            method: system
+
+        - name: Atualizar Flatpaks
+          ansible.builtin.command: flatpak update -y --noninteractive
+          register: flatpak_update
+          changed_when: "'Nothing to do' not in flatpak_update.stdout"
+          when: run_system_update | bool
+
+    # -------------------------------------------------------------------------
+    # Fontes (em ~/.local/share/fonts; os Flatpaks também as enxergam)
+    # -------------------------------------------------------------------------
+    - name: Baixar fontes Meslo Nerd Fonts
+      ansible.builtin.get_url:
+        url: "https://github.com/romkatv/powerlevel10k-media/raw/master/{{ item | urlencode }}"
+        dest: "{{ target_home }}/.local/share/fonts/{{ item }}"
+        mode: "0644"
+      loop:
+        - MesloLGS NF Regular.ttf
+        - MesloLGS NF Bold.ttf
+        - MesloLGS NF Italic.ttf
+        - MesloLGS NF Bold Italic.ttf
+      notify: Atualizar cache de fontes
+
+    # -------------------------------------------------------------------------
+    # Claude Code e ambiente Zsh
+    # -------------------------------------------------------------------------
+    - name: Instalar Claude Code
+      ansible.builtin.shell: curl -fsSL https://claude.ai/install.sh | bash
+      args:
+        executable: /bin/bash
+        creates: "{{ target_home }}/.local/bin/claude"
+      tags:
+        - claude-code
+
+    - name: Verificar se o zsh está disponível no host
+      ansible.builtin.stat:
+        path: /usr/bin/zsh
+      register: zsh_bin
+
+    - name: Configurar ambiente Zsh
+      when: zsh_bin.stat.exists
+      block:
+        - name: Instalar Oh My Zsh
+          ansible.builtin.shell: |
+            CHSH=no RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" '' --unattended
+          args:
+            creates: "{{ target_home }}/.oh-my-zsh"
+
+        - name: Clonar tema Powerlevel10k
+          ansible.builtin.git:
+            repo: https://github.com/romkatv/powerlevel10k.git
+            dest: "{{ target_home }}/.oh-my-zsh/custom/themes/powerlevel10k"
+            version: master
+            update: false
+
+        - name: Clonar plugins do zsh
+          ansible.builtin.git:
+            repo: "{{ item.repo }}"
+            dest: "{{ item.dest }}"
+            version: master
+            update: false
+          loop:
+            - repo: https://github.com/zsh-users/zsh-syntax-highlighting.git
+              dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+            - repo: https://github.com/zsh-users/zsh-autosuggestions.git
+              dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+            - repo: https://github.com/zsh-users/zsh-completions.git
+              dest: "{{ target_home }}/.oh-my-zsh/custom/plugins/zsh-completions"
+
+        # Na primeira execução o .zshrc ainda é o modelo do Oh My Zsh; depois disso
+        # ele é preservado para não sobrescrever personalizações do usuário.
+        - name: Verificar se o .zshrc já foi implantado
+          ansible.builtin.command: grep -q 'powerlevel10k/powerlevel10k' "{{ target_home }}/.zshrc"
+          register: zshrc_check
+          changed_when: false
+          failed_when: false
+
+        - name: Implantar arquivo .zshrc
+          when: zshrc_check.rc != 0 or (overwrite_zshrc | bool)
+          ansible.builtin.copy:
+            dest: "{{ target_home }}/.zshrc"
+            mode: "0644"
+            content: |
+              # Homebrew primeiro, para o Oh My Zsh encontrar fzf, kubectl, terraform etc.
+              [[ -x {{ brew_prefix }}/bin/brew ]] && eval "$({{ brew_prefix }}/bin/brew shellenv)"
+
+              export ZSH="$HOME/.oh-my-zsh"
+              ZSH_THEME="powerlevel10k/powerlevel10k"
+              plugins=(git docker docker-compose terraform fzf zsh-syntax-highlighting zsh-autosuggestions zsh-completions)
+              source $ZSH/oh-my-zsh.sh
+
+              export EDITOR=vim
+              export PATH="$HOME/.local/bin:$PATH"
+
+              alias ..='cd ..'
+              alias ...='cd ../..'
+              alias l='ls -CF'
+              alias ls='ls -lh --color=auto'
+              alias la='ls -lah --color=auto'
+              alias cls='clear'
+              alias c='clear'
+              alias mkdir='mkdir -pv'
+              alias cp='cp -iv'
+              alias mv='mv -iv'
+
+              alias df='df -h'
+              alias du='du -sh * | sort -h'
+              alias myip='curl -s ifconfig.me && echo'
+              alias ports='ss -tulpen'
+              alias ping='ping -c 5'
+              alias h='history'
+              alias j='jobs -l'
+
+              alias sys-update='ujust update'
+              alias sys-status='rpm-ostree status'
+              alias sys-rollback='sudo rpm-ostree rollback'
+              alias rpm-install='rpm-ostree install'
+              alias rpm-remove='rpm-ostree uninstall'
+              alias rpm-search='rpm-ostree search'
+              alias brew-install='brew install'
+              alias brew-remove='brew uninstall'
+              alias brew-update='brew update && brew upgrade'
+              alias fp-install='flatpak install flathub'
+              alias fp-remove='flatpak uninstall'
+              alias fp-update='flatpak update -y'
+              alias fp-search='flatpak search'
+
+              alias g='git'
+              alias gst='git status'
+              alias ga='git add'
+              alias gc='git commit -m'
+              alias gp='git push'
+              alias gl='git pull'
+              alias gco='git checkout'
+              alias gb='git branch'
+              alias gcb='git checkout -b'
+
+              alias up='docker compose up -d'
+              alias down='docker compose down'
+              alias dps='docker ps'
+              alias dpa='docker ps -a'
+              alias di='docker images'
+              alias drm='docker rm'
+              alias drmi='docker rmi'
+              alias dlogs='docker logs -f'
+              alias dexec='docker exec -it'
+              alias dbuild='docker build -t'
+
+              alias k='kubectl'
+              alias kgp='kubectl get pods'
+              alias kgs='kubectl get svc'
+              alias kga='kubectl get all'
+              alias kctx='kubectl config use-context'
+              alias kctxs='kubectl config get-contexts'
+              alias kctxc='kubectl config current-context'
+              alias kget='kubectl get'
+              alias kdel='kubectl delete'
+              alias klogs='kubectl logs -f'
+              alias kapply='kubectl apply -f'
+
+              alias tf='terraform'
+              alias ansible-env='source pyenv/bin/activate'
+
+              dbash() { docker exec -it "$1" /bin/bash; }
+              dsh() { docker exec -it "$1" /bin/sh; }
+              kexec() { kubectl exec -it "$@"; }
+              kdb() { kubectl exec -it "$1" -- /bin/bash; }
+              ksh() { kubectl exec -it "$1" -- /bin/sh; }
+
+              [[ -f ~/.profile ]] && source ~/.profile
+
+        - name: Definir zsh como shell padrão
+          become: true
+          ansible.builtin.user:
+            name: "{{ target_user }}"
+            shell: /usr/bin/zsh
+
+    - name: Configurar sudo sem senha para o grupo wheel
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-wheel-nopasswd
+        content: "%wheel ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+      when: configure_passwordless_sudo | bool
+
+    # -------------------------------------------------------------------------
+    # GNOME
+    # -------------------------------------------------------------------------
+    - name: Configurar pastas de aplicativos no GNOME (filhos)
+      ansible.builtin.shell:
+        cmd: |
+          gsettings set org.gnome.desktop.app-folders folder-children "{{ folder_children }}"
+      vars:
+        folder_children: "{{ '[''' ~ (gnome_app_folders | map(attribute='id') | join(''', ''')) ~ ''']' }}"
+      args:
+        executable: /bin/bash
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ target_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ target_uid }}/bus"
+      changed_when: false
+      failed_when: false
+      when: configure_gnome_app_folders | bool
+
+    - name: Configurar pastas de aplicativos no GNOME
+      ansible.builtin.shell:
+        cmd: |
+          apps_string=""
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            if [ -f "$pattern" ]; then
+              app_name="'$(basename "$pattern")'"
+              if [ -n "$apps_string" ]; then
+                apps_string="$apps_string,$app_name"
+              else
+                apps_string="$app_name"
+              fi
+            fi
+          done <<'EOF'
+          {{ item.patterns | join('\n') }}
+          EOF
+
+          gsettings set org.gnome.desktop.app-folders.folder:/org/gnome/desktop/app-folders/folders/{{ item.id }}/ name "{{ item.name }}"
+
+          if [ -n "$apps_string" ]; then
+            gsettings set org.gnome.desktop.app-folders.folder:/org/gnome/desktop/app-folders/folders/{{ item.id }}/ apps "[$apps_string]"
+          fi
+      args:
+        executable: /bin/bash
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ target_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ target_uid }}/bus"
+      loop: "{{ gnome_app_folders }}"
+      changed_when: false
+      failed_when: false
+      when: configure_gnome_app_folders | bool
+
+    - name: Avisar sobre a reinicialização pendente
+      ansible.builtin.debug:
+        msg:
+          - "REINICIE o sistema: há pacotes em camada aguardando o próximo boot."
+          - "Pendentes: {{ rpm_missing | join(', ') }}"
+          - "Depois do reboot, rode o playbook de novo para concluir (Docker, grupos e zsh)."
+      when: reboot_required | default(false) | bool
+
+    - name: Mensagem final
+      ansible.builtin.debug:
+        msg:
+          - "Obrigado por utilizar este script de configuração!"
+          - "Script desenvolvido por Aleon Chagas"
+
+  handlers:
+    - name: Atualizar cache de fontes
+      ansible.builtin.command: fc-cache -f
+      changed_when: true
