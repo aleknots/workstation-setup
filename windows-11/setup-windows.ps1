@@ -84,6 +84,26 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# Hosts that capture the output instead of being a real console (PowerShell ISE, some
+# remote tools) show raw color codes, garble accented characters and cannot answer the
+# prompts. In that case reopen the script in a real console window. With the input
+# redirected too (scheduler, pipeline) it keeps running here, non-interactively.
+# This block must be compatible with Windows PowerShell 5.1.
+if ([Environment]::UserInteractive -and [Console]::IsOutputRedirected -and -not [Console]::IsInputRedirected) {
+    $relaunch = @('-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"")
+    foreach ($param in $PSBoundParameters.GetEnumerator()) {
+        if ($param.Value -is [switch]) {
+            if ($param.Value.IsPresent) { $relaunch += "-$($param.Key)" }
+        }
+        else {
+            $relaunch += "-$($param.Key)", $param.Value
+        }
+    }
+    Write-Host 'Este terminal (ex.: PowerShell ISE) captura a saida do script. O setup continua em uma nova janela do PowerShell.'
+    Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $relaunch
+    exit 0
+}
+
 # =============================================================================
 #  Phase 1 (Windows PowerShell 5.1): installs PowerShell 7 and relaunches this script in it
 #  Everything in this block must be compatible with 5.1.
