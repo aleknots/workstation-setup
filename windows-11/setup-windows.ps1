@@ -91,6 +91,8 @@ $ProgressPreference = 'SilentlyContinue'
 
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    # Sem isso o console do Windows PowerShell 5.1 troca os acentos das mensagens
+    try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
     # Num Windows PowerShell de 32 bits, $env:ProgramFiles aponta para "Program Files (x86)"
     $programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles }
     $pwsh = Join-Path $programFiles 'PowerShell\7\pwsh.exe'
@@ -108,9 +110,24 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         $reason = if ($wingetCode) { "winget retornou $wingetCode" } else { 'winget indisponível' }
         Write-Host "  $reason e o pwsh.exe não está em Program Files; baixando o MSI oficial do GitHub..." -ForegroundColor Yellow
         try {
-            $release = Invoke-RestMethod -UseBasicParsing -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
-            $asset = $release.assets | Where-Object { $_.name -match '^PowerShell-.*-win-x64\.msi$' } | Select-Object -First 1
-            if (-not $asset) { throw 'MSI x64 não encontrado na última release do PowerShell.' }
+            # A "última release" pode não ter MSI: do PowerShell 7.7 em diante só sai MSIX, e o
+            # MSI continua apenas na linha 7.6 (LTS). Por isso procura a release estável mais
+            # recente que ainda tenha o MSI x64. Páginas pequenas: o Windows PowerShell 5.1
+            # não interpreta respostas JSON muito grandes.
+            $asset = $null
+            $seen = @()
+            foreach ($page in 1..8) {
+                $releases = Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/PowerShell/PowerShell/releases?per_page=5&page=$page"
+                if ($releases -is [string]) { $releases = $releases | ConvertFrom-Json }
+                foreach ($release in @($releases)) {
+                    if ($release.draft -or $release.prerelease) { continue }
+                    $seen += $release.tag_name
+                    $asset = $release.assets | Where-Object { $_.name -match '^PowerShell-.*-win-x64\.msi$' } | Select-Object -First 1
+                    if ($asset) { break }
+                }
+                if ($asset) { break }
+            }
+            if (-not $asset) { throw "MSI x64 não encontrado nas releases estáveis do PowerShell (vistas: $($seen -join ', '))." }
             $msi = Join-Path $env:TEMP $asset.name
             Write-Host ("  Baixando {0} ({1:N0} MB)..." -f $asset.name, ($asset.size / 1MB))
             # O WebClient é bem mais rápido que o Invoke-WebRequest no Windows PowerShell 5.1
@@ -124,7 +141,10 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
             # 3010: instalado, requer reinicialização
             if ($process.ExitCode -notin 0, 3010) { throw "msiexec retornou $($process.ExitCode)" }
         }
-        catch { Write-Host "  [!!] MSI: $($_.Exception.Message)" -ForegroundColor Yellow }
+        catch {
+            Write-Host "  [!!] MSI: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host '  Instale o PowerShell 7 x64 manualmente (https://aka.ms/powershell-release?tag=lts) e rode o setup de novo.' -ForegroundColor Yellow
+        }
     }
     if (-not (Test-Path $pwsh)) {
         # Último recurso: outro PowerShell 7 do PATH (ex.: o da Microsoft Store), de
@@ -963,11 +983,15 @@ function Step-Profile {
     $oldDir = Split-Path -Parent $oldProfile
     $localProfile = Join-Path $profileDir 'profile.local.ps1'
     $oldLocal = Join-Path $oldDir 'profile.local.ps1'
+    $marker = '# setup-windows.ps1: carrega o perfil local do usuário'
     if (-not (Test-Path $localProfile) -and (Test-Path $oldLocal)) {
         Copy-Item $oldLocal $localProfile
         Write-Item Ok 'profile.local.ps1' "copiado de $oldDir"
     }
-    if (Test-Path $oldProfile) {
+    if ((Test-Path $oldProfile) -and "$(Get-Content $oldProfile -Raw)".Contains($marker)) {
+        # É só o carregador (PowerShell instalado por MSIX): fica onde está
+    }
+    elseif (Test-Path $oldProfile) {
         if ((Get-Content $oldProfile -TotalCount 5) -match 'setup-windows\.ps1') {
             Move-Item $oldProfile "$oldProfile.bak-$Stamp"
             Write-Item Ok 'Perfil antigo em Documentos' "renomeado para $(Split-Path -Leaf $oldProfile).bak-$Stamp"
@@ -988,7 +1012,6 @@ function Step-Profile {
     # usuários" fica na pasta do PowerShell (Arquivos de Programas) e aqui só carrega o
     # perfil local de quem abriu o terminal.
     $loader = Join-Path $PSHOME 'Microsoft.PowerShell_profile.ps1'
-    $marker = '# setup-windows.ps1: carrega o perfil local do usuário'
     $loaderLines = @(
         $marker
         '$__userProfile = Join-Path $env:USERPROFILE ''.config\powershell\Microsoft.PowerShell_profile.ps1'''
@@ -1007,7 +1030,22 @@ function Step-Profile {
         }
     }
     catch {
-        Write-Item Fail 'Carregador do perfil' "não foi possível gravar $loader ($($_.Exception.Message)); sem ele o perfil local não é carregado"
+        # PowerShell instalado por MSIX ou pela Microsoft Store: a pasta dele é somente
+        # leitura. O carregador (três linhas) vai para o perfil padrão, em Documentos; o
+        # perfil de verdade continua na pasta local.
+        try {
+            if ((Test-Path $oldProfile) -and "$(Get-Content $oldProfile -Raw)".Contains($marker)) {
+                Write-Item Skip 'Carregador do perfil' 'já configurado'
+            }
+            else {
+                $null = New-Item -ItemType Directory -Path $oldDir -Force
+                Add-Content -Path $oldProfile -Value $loaderLines -Encoding utf8
+                Write-Item Warn 'Carregador do perfil' "a pasta do PowerShell é somente leitura; gravado em $oldProfile (só as três linhas do carregador)"
+            }
+        }
+        catch {
+            Write-Item Fail 'Carregador do perfil' "não foi possível gravar ($($_.Exception.Message)); sem ele o perfil local não é carregado"
+        }
     }
     Write-Item Info 'Pasta do perfil' $profileDir
 }
