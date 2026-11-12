@@ -1,10 +1,11 @@
 ﻿# =============================================================================
 #  Perfil PowerShell 7 · SRE/DevOps
-#  Implantado pelo setup-windows.ps1 (sobrescrito a cada execução, com backup).
+#  Implantado pelo setup-windows.ps1 em %USERPROFILE%\.config\powershell, fora do
+#  OneDrive (sobrescrito a cada execução, com backup).
 #  Customizações pessoais: profile.local.ps1, na mesma pasta.
 # =============================================================================
 
-$ProfileDir = Split-Path -Parent $PROFILE
+$ProfileDir = $PSScriptRoot
 
 #region Base ------------------------------------------------------------------
 $OutputEncoding = [Console]::InputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
@@ -26,12 +27,6 @@ foreach ($dir in $env:Path -split ';') {
 }
 
 function Test-Cmd([string]$Name) { $PathCommands.Contains($Name) }
-
-# Há um Ubuntu no WSL? Só na versão Pro do setup; a distro "docker-desktop" do Docker
-# Desktop (versão Home) não conta. Lido do registro: listar as distros com o wsl.exe
-# custaria centenas de milissegundos a cada terminal aberto.
-$HasUbuntuWsl = [bool](Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction Ignore |
-    Where-Object { (Get-ItemProperty $_.PSPath).DistributionName -like 'Ubuntu*' })
 #endregion
 
 #region Prompt ------------------------------------------------------------------
@@ -476,6 +471,18 @@ function h {
 }
 #endregion
 
+#region Git Bash -------------------------------------------------------------------
+# bash do Git for Windows na mesma janela, sem WSL e sem a console do Git Bash:
+#   gbash · gbash script.sh · gbash -c 'comando'
+# O "bash" sozinho é o atalho do WSL em System32, por isso o caminho completo.
+$GitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
+if (Test-Path $GitBash) {
+    function gbash {
+        if ($args) { & $GitBash @args } else { & $GitBash --login -i }
+    }
+}
+#endregion
+
 #region Git ------------------------------------------------------------------------
 Set-Alias g git
 function gst { git status @args }
@@ -499,11 +506,7 @@ function d([string]$Message = 'Automated commit') {
 }
 #endregion
 
-#region Docker (Engine no WSL) --------------------------------------------------------
-# Sem Docker Desktop, o comando docker do Windows repassa para o Docker do WSL
-if (-not (Test-Cmd docker) -and $HasUbuntuWsl) {
-    function docker { wsl.exe -e docker @args }
-}
+#region Docker (Docker Desktop) -------------------------------------------------------
 function up { docker compose up -d @args }
 function down { docker compose down @args }
 function dps { docker ps @args }
@@ -559,51 +562,11 @@ function knetshoot {
 #endregion
 
 #region Lab k3s ----------------------------------------------------------------------------
-# Versão Pro:  o k3s roda no Ubuntu do WSL2 (playbook com -e k3s_lab=true), contexto "k3s".
-# Versão Home: o k3s roda em contêineres do Docker Desktop, via k3d, contexto "k3d-lab".
-# Nos dois casos kubectl, k9s, helm, argocd, kubeseal e Headlamp acessam o cluster pelo
-# localhost, sem abrir o Ubuntu.
+# O k3s roda em contêineres do Docker Desktop, via k3d, contexto "k3d-lab". kubectl, k9s,
+# helm, argocd, kubeseal e Headlamp acessam o cluster pelo localhost.
 $LabContext = $null
 
-if ($HasUbuntuWsl) {
-    $LabContext = 'k3s'
-    $K3sDistro = 'Ubuntu-26.04'
-    $K3sKubeconfig = Join-Path $HOME '.kube\k3s.yaml'
-
-    function Set-K3sKubeconfigEnv {
-        $env:KUBECONFIG = @((Join-Path $HOME '.kube\config'), $K3sKubeconfig) -join ';'
-    }
-    if (Test-Path $K3sKubeconfig) { Set-K3sKubeconfigEnv }
-
-    function Invoke-K3sRoot { wsl.exe -d $K3sDistro -u root -e @args }
-
-    function k3s-up {
-        Invoke-K3sRoot systemctl start k3s
-        if ($LASTEXITCODE) { Write-Warning "Não foi possível iniciar o k3s na distro $K3sDistro."; return }
-        # O k3s chama cluster, usuário e contexto de "default"; no Windows viram "k3s"
-        $config = (Invoke-K3sRoot cat /etc/rancher/k3s/k3s.yaml) -join "`n"
-        $null = New-Item -ItemType Directory -Path (Split-Path $K3sKubeconfig) -Force
-        ($config -replace '(?m): default$', ': k3s') | Set-Content -Path $K3sKubeconfig
-        Set-K3sKubeconfigEnv
-        $null = kubectl config use-context k3s
-        kubectl get nodes
-    }
-
-    function k3s-down {
-        Invoke-K3sRoot sh -c 'systemctl stop k3s; /usr/local/bin/k3s-killall.sh >/dev/null 2>&1'
-        'k3s desligado'
-    }
-
-    function k3s-status {
-        $state = Invoke-K3sRoot systemctl is-active k3s
-        "k3s: $state"
-        if ($state -eq 'active') { kubectl --context k3s get nodes }
-    }
-
-    # k3d (clusters k3s dentro do Docker) roda no WSL, onde está o Docker
-    function k3d { wsl.exe -d $K3sDistro -e k3d @args }
-}
-elseif (Test-Cmd k3d) {
+if (Test-Cmd k3d) {
     $LabContext = 'k3d-lab'
     $LabCluster = 'lab'
 
@@ -631,7 +594,7 @@ elseif (Test-Cmd k3d) {
 
     function k3s-status { k3d cluster list }
 
-    # Argo CD e os mesmos add-ons do playbook do WSL; o próprio Argo CD instala e mantém
+    # Argo CD e os add-ons do lab; o próprio Argo CD instala e mantém
     # cada add-on. -Grafana inclui o kube-prometheus-stack (~1 GB a mais de RAM).
     function lab-argocd {
         param([switch]$Grafana)
@@ -732,7 +695,8 @@ function gcpp {
 #endregion
 
 #region Scripts pessoais ----------------------------------------------------------------
-$SreScripts = Join-Path $env:OneDrive 'Documentos\SRE\Workstation\scripts'
+# Pasta local, fora do OneDrive: %USERPROFILE%\.config\powershell\scripts
+$SreScripts = Join-Path $PSScriptRoot 'scripts'
 
 # Mantém a sessão ativa (F15 a cada 4 min). Roda até Ctrl+C.
 function aleonx {

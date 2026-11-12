@@ -11,9 +11,10 @@
     - Home: PowerShell 7 customizado com as ferramentas de DevOps no Windows, mais o
             Docker Desktop e o k3d para rodar o k3s. Sem Ubuntu: o WSL2 só serve de
             motor ao Docker Desktop, que só ocupa memória enquanto está aberto.
-    - Pro:  PowerShell 7 + WSL2 com Ubuntu 26.04, Hyper-V, Área Restrita do Windows,
-            Vagrant, Packer e Multipass. Depois, configure o Ubuntu com o playbook
-            ubuntu-26.04-wsl2. Só nas edições com Hyper-V (Pro, Enterprise, Education).
+    - Pro:  tudo da Home, mais Hyper-V, Área Restrita do Windows, Vagrant, Packer e
+            Multipass. Só nas edições com Hyper-V (Pro, Enterprise, Education).
+
+    Nenhuma das versões instala o Ubuntu.
 
     .wslconfig nas duas versões: rede espelhada, DNS e proxy do Windows, memória e
     processadores limitados, recuperação de memória e disco esparso. A memória padrão é
@@ -25,10 +26,10 @@
     - CLIs de nuvem (Azure, AWS, GCP), módulo Az e Telnet
     - Apps de trabalho, jogos e de uso pessoal (VS Code, Steam, Sublime...)
     - Ajustes de desenvolvedor, Nerd Font, módulos do PowerShell e Windows Terminal
-    - Perfil do PowerShell 7 (prompt nativo) que fica na mesma pasta deste script
+    - Perfil do PowerShell 7 (prompt nativo) que fica na mesma pasta deste script; é
+      copiado para %USERPROFILE%\.config\powershell (pasta local, fora do OneDrive)
 
-    Docker: na versão Home vem do Docker Desktop; na versão Pro roda no Ubuntu do WSL e o
-    perfil expõe o comando `docker` a partir dele. O Docker Desktop é gratuito para uso
+    Docker: vem do Docker Desktop nas duas versões. O Docker Desktop é gratuito para uso
     pessoal e empresas pequenas; em empresas grandes exige assinatura.
 
 .PARAMETER Versao
@@ -194,7 +195,7 @@ $Edition = 'Home'
 # Versao: o recurso só é habilitado nessa versão.
 # Recursos que a edição não tem são pulados.
 $WindowsFeatures = @(
-    # WSL nas duas versões: na Home é o motor do Docker Desktop (sem Ubuntu)
+    # WSL nas duas versões: é só o motor do Docker Desktop (sem Ubuntu)
     @{ Name = 'Microsoft-Windows-Subsystem-Linux'; Label = 'Subsistema do Windows para Linux' }
     @{ Name = 'VirtualMachinePlatform'; Label = 'Plataforma de Máquina Virtual' }
     @{ Name = 'Microsoft-Hyper-V-All'; Label = 'Hyper-V (plataforma, Gerenciador e módulo)'; Versao = 'Pro' }
@@ -204,8 +205,6 @@ $WindowsFeatures = @(
 
 # Grupo "Administradores do Hyper-V" pelo SID, porque o nome muda com o idioma
 $HyperVAdminsSid = 'S-1-5-32-578'
-
-$WslDistro = 'Ubuntu-26.04'
 
 # REVISE ANTES DE RODAR: todos os apps abaixo estão ativos. Para não instalar um app,
 # comente a linha com # no início; para instalar de novo, tire o #.
@@ -251,12 +250,11 @@ $WingetPackages = [ordered]@{
         'Obsidian.Obsidian'                      # obsidian
         'Microsoft.EdgeWebView2Runtime'          # webview2-runtime
         'SublimeHQ.SublimeText.4'                # sublimetext4
-        'JanDeDobbeleer.OhMyPosh'                # oh-my-posh (também instala a Nerd Font)
         'JAMSoftware.TreeSize.Free'              # treesizefree
         'Roblox.Roblox'                          # roblox
         'Flameshot.Flameshot@12.1.0'             # versão estável
         # nvidia-display-driver e nvidia-app: não estão no winget
-        # docker-desktop: na versão Home vem no grupo Docker Desktop
+        # docker-desktop: vem no grupo Docker Desktop
     )
     # Ferramentas de terminal e Kubernetes usadas pelo perfil do PowerShell
     'Terminal e shell' = @(
@@ -273,6 +271,7 @@ $WingetPackages = [ordered]@{
         'dandavison.delta'
         'jqlang.jq'
         'MikeFarah.yq'
+        'JanDeDobbeleer.OhMyPosh'                # só instala a Nerd Font; o prompt é nativo
     )
     'Kubernetes' = @(
         'Kubernetes.kubectl'
@@ -281,7 +280,7 @@ $WingetPackages = [ordered]@{
         'stern.stern'
         'Headlamp.Headlamp'                      # interface gráfica; usa o mesmo kubeconfig
     )
-    # Só na versão Home: sem Ubuntu no WSL, o Docker e o k3s (via k3d) vêm do Docker Desktop
+    # Nas duas versões: o Docker e o k3s (via k3d) vêm do Docker Desktop
     'Docker Desktop' = @(
         'Docker.DockerDesktop'
         'k3d.k3d'                                # k3s em contêineres do Docker
@@ -297,7 +296,6 @@ $WingetPackages = [ordered]@{
 $AppGroups = 'Pessoal / Opcional'
 # Grupos que só entram numa das versões; os outros entram nas duas
 $EditionGroups = @{
-    'Docker Desktop' = 'Home'
     'Virtualização'  = 'Pro'
 }
 
@@ -307,6 +305,9 @@ $EditionGroups = @{
 # em contas novas). Nomes de pacote Appx; aceitam curinga. Para manter um, comente a linha.
 # Ficam: Loja, Calculadora, Fotos, Bloco de Notas, Paint, Ferramenta de Captura, Câmera,
 # Terminal, Edge e os apps do Xbox (usados pelos jogos).
+# Atenção: MSTeams é o Teams novo (pessoal e corporativo) e OutlookForWindows é o novo
+# Outlook; num PC em que você usa um deles no trabalho, comente a linha.
+# O Microsoft 365 (hub do Office) vem comentado: não é removido.
 $BloatwareApps = @(
     '7EE7776C.LinkedInforWindows'           # LinkedIn
     'Microsoft.MicrosoftSolitaireCollection' # Paciência
@@ -315,7 +316,7 @@ $BloatwareApps = @(
     'Microsoft.BingSearch'                   # Pesquisa do Bing
     'Microsoft.GetHelp'                      # Obter Ajuda
     'Microsoft.Getstarted'                   # Dicas
-    'Microsoft.MicrosoftOfficeHub'           # Microsoft 365 (Office)
+    # 'Microsoft.MicrosoftOfficeHub'         # Microsoft 365 (Office)
     'Microsoft.People'
     'Microsoft.WindowsFeedbackHub'           # Hub de Comentários
     'Microsoft.WindowsMaps'                  # Mapas
@@ -324,6 +325,7 @@ $BloatwareApps = @(
     'Microsoft.ZuneVideo'                    # Filmes e TV
     'Microsoft.ZuneMusic'                    # Media Player
     'Microsoft.Todos'                        # To Do
+    'Microsoft.Whiteboard'                   # Whiteboard
     'Microsoft.PowerAutomateDesktop'
     'Microsoft.MicrosoftJournal'
     'Microsoft.OutlookForWindows'            # novo Outlook
@@ -333,7 +335,7 @@ $BloatwareApps = @(
     'MicrosoftCorporationII.QuickAssist'     # Assistência Rápida
     'MicrosoftCorporationII.MicrosoftFamily' # Family Safety
     'MicrosoftTeams'                         # Teams pessoal (antigo)
-    'MSTeams'                                # Teams pessoal
+    'MSTeams'                                # Teams novo: pessoal e corporativo
     'Clipchamp.Clipchamp'
     'SpotifyAB.SpotifyMusic'
     'Disney.37853FC22B2CE'                   # Disney+
@@ -383,6 +385,9 @@ $GitGlobalConfig = [ordered]@{
 $FontFace          = 'MesloLGM Nerd Font'
 $PwshProfileGuid   = '{574e775e-4f2a-5b96-ac1e-a2962a402336}'   # perfil PowerShell 7 do Windows Terminal
 $ProfileFiles      = @('Microsoft.PowerShell_profile.ps1')
+# Pasta local do perfil e dos scripts pessoais. A pasta padrão do PowerShell fica em
+# Documentos, que o OneDrive costuma redirecionar; esta fica só no disco local.
+$LocalProfileDir   = Join-Path $env:USERPROFILE '.config\powershell'
 
 # Códigos do winget que significam "já está instalado / nada a atualizar"
 $WingetNoop = @(
@@ -521,14 +526,11 @@ function Write-Summary([TimeSpan]$Elapsed) {
         Write-Host "  $($Ui.Warn)▲$($Ui.Reset) Reinicie o Windows para concluir a ativação dos recursos."
     }
     Write-Host "  $($Ui.Accent)›$($Ui.Reset) Abra uma nova aba do Windows Terminal (PowerShell 7 é o padrão)."
+    Write-Host "  $($Ui.Accent)›$($Ui.Reset) Abra o Docker Desktop uma vez para aceitar os termos; depois, no PowerShell: $($Ui.Dim)k3s-up$($Ui.Reset) e $($Ui.Dim)lab-argocd$($Ui.Reset)."
     if ($Edition -eq 'Pro') {
-        Write-Host "  $($Ui.Accent)›$($Ui.Reset) Abra o Ubuntu ($($Ui.Dim)wsl -d $WslDistro$($Ui.Reset)) para criar o usuário Linux e rode o playbook $($Ui.Dim)ubuntu-26.04-wsl2$($Ui.Reset)."
         Write-Host "  $($Ui.Accent)›$($Ui.Reset) Hyper-V: $($Ui.Dim)virtmgmt.msc$($Ui.Reset) · VM Ubuntu: $($Ui.Dim)multipass launch --name lab$($Ui.Reset) · Área Restrita no menu Iniciar"
     }
-    else {
-        Write-Host "  $($Ui.Accent)›$($Ui.Reset) Abra o Docker Desktop uma vez para aceitar os termos; depois, no PowerShell: $($Ui.Dim)k3s-up$($Ui.Reset) e $($Ui.Dim)lab-argocd$($Ui.Reset)."
-    }
-    Write-Host "  $($Ui.Accent)›$($Ui.Reset) Ajustes pessoais:$($Ui.Dim)profile.local.ps1$($Ui.Reset) na pasta do perfil."
+    Write-Host "  $($Ui.Accent)›$($Ui.Reset) Ajustes pessoais: $($Ui.Dim)profile.local.ps1$($Ui.Reset) em $($Ui.Dim)$LocalProfileDir$($Ui.Reset)$(if ($SkipProfile) { ' (perfil não implantado: -SkipProfile)' })."
     Write-Host "  $($Ui.Accent)›$($Ui.Reset) Logins: gh auth login · az login · aws configure sso · gcloud init"
     Write-Host "`n$($Ui.Dim)Script desenvolvido por Aleon Chagas$($Ui.Reset)`n"
 }
@@ -630,7 +632,7 @@ function Step-Prerequisites {
 
     $device = "$($ComputerInfo.Manufacturer) $($ComputerInfo.Model)".Trim()
     Write-Item Ok 'Dispositivo' $(if ($IsRogAlly) { "$device (ROG Ally: limite de memória do WSL)" } else { $device })
-    Write-Item Ok "Versão Windows 11 $Edition" $(if ($Edition -eq 'Pro') { 'PowerShell 7 + WSL2/Ubuntu, Hyper-V e ferramentas de VM' } else { 'PowerShell 7 + Docker Desktop e k3d, sem Ubuntu' })
+    Write-Item Ok "Versão Windows 11 $Edition" $(if ($Edition -eq 'Pro') { 'PowerShell 7 + Docker Desktop e k3d, Hyper-V e ferramentas de VM' } else { 'PowerShell 7 + Docker Desktop e k3d' })
 
     Write-Item Ok 'PowerShell' "$($PSVersionTable.PSVersion)"
 
@@ -860,8 +862,14 @@ function Step-NerdFont {
 }
 
 function Step-PSModules {
+    # Escopo AllUsers: os módulos vão para Arquivos de Programas. O escopo CurrentUser
+    # grava em Documentos\PowerShell\Modules, que o OneDrive costuma sincronizar.
     foreach ($module in $PSModules) {
-        $installed = Get-InstalledPSResource -Name $module.Name -Scope CurrentUser -ErrorAction Ignore |
+        $old = Get-InstalledPSResource -Name $module.Name -Scope CurrentUser -ErrorAction Ignore | Select-Object -First 1
+        if ($old) {
+            Write-Item Warn $module.Name "há uma cópia antiga em Documentos, que tem prioridade; remova com: Uninstall-PSResource $($module.Name) -Scope CurrentUser"
+        }
+        $installed = Get-InstalledPSResource -Name $module.Name -Scope AllUsers -ErrorAction Ignore |
             Sort-Object Version -Descending | Select-Object -First 1
         if ($installed) {
             Write-Item Skip $module.Name "$($installed.Version) já instalado"
@@ -869,7 +877,7 @@ function Step-PSModules {
         }
         if ($module.Note) { Write-Item Info $module.Name $module.Note }
         try {
-            Install-PSResource -Name $module.Name -Scope CurrentUser -TrustRepository -AcceptLicense -Quiet
+            Install-PSResource -Name $module.Name -Scope AllUsers -TrustRepository -AcceptLicense -Quiet
             Write-Item Ok $module.Name 'instalado'
         }
         catch {
@@ -921,8 +929,10 @@ function Step-WindowsTerminal {
 }
 
 function Step-Profile {
-    $profileDir = Split-Path -Parent $PROFILE.CurrentUserCurrentHost
+    $profileDir = $LocalProfileDir
     $null = New-Item -ItemType Directory -Path $profileDir -Force
+    # Scripts pessoais usados pelo perfil (ex.: aleonx.ps1)
+    $null = New-Item -ItemType Directory -Path (Join-Path $profileDir 'scripts') -Force
 
     foreach ($file in $ProfileFiles) {
         $source = Join-Path $PSScriptRoot $file
@@ -946,12 +956,58 @@ function Step-Profile {
         Write-Item Ok $file $detail
     }
 
+    # Perfil implantado por versões anteriores do setup em Documentos (OneDrive): o
+    # profile.local.ps1 é copiado para a pasta local e o perfil antigo é renomeado,
+    # para não carregar duas vezes.
+    $oldProfile = $PROFILE.CurrentUserCurrentHost
+    $oldDir = Split-Path -Parent $oldProfile
     $localProfile = Join-Path $profileDir 'profile.local.ps1'
+    $oldLocal = Join-Path $oldDir 'profile.local.ps1'
+    if (-not (Test-Path $localProfile) -and (Test-Path $oldLocal)) {
+        Copy-Item $oldLocal $localProfile
+        Write-Item Ok 'profile.local.ps1' "copiado de $oldDir"
+    }
+    if (Test-Path $oldProfile) {
+        if ((Get-Content $oldProfile -TotalCount 5) -match 'setup-windows\.ps1') {
+            Move-Item $oldProfile "$oldProfile.bak-$Stamp"
+            Write-Item Ok 'Perfil antigo em Documentos' "renomeado para $(Split-Path -Leaf $oldProfile).bak-$Stamp"
+        }
+        else {
+            Write-Item Warn 'Há outro perfil em Documentos' "$oldProfile não é deste setup e continua sendo carregado"
+        }
+    }
+
     if (-not (Test-Path $localProfile)) {
         @(
             '# Customizações locais: o setup nunca sobrescreve este arquivo.'
         ) | Set-Content -Path $localProfile -Encoding utf8
         Write-Item Ok 'profile.local.ps1' 'criado para customizações pessoais'
+    }
+
+    # O PowerShell só procura o perfil do usuário em Documentos. O perfil "todos os
+    # usuários" fica na pasta do PowerShell (Arquivos de Programas) e aqui só carrega o
+    # perfil local de quem abriu o terminal.
+    $loader = Join-Path $PSHOME 'Microsoft.PowerShell_profile.ps1'
+    $marker = '# setup-windows.ps1: carrega o perfil local do usuário'
+    $loaderLines = @(
+        $marker
+        '$__userProfile = Join-Path $env:USERPROFILE ''.config\powershell\Microsoft.PowerShell_profile.ps1'''
+        'if (Test-Path -LiteralPath $__userProfile) { . $__userProfile }'
+    )
+    try {
+        $loaderExists = Test-Path $loader
+        if ($loaderExists -and "$(Get-Content $loader -Raw)".Contains($marker)) {
+            Write-Item Skip 'Carregador do perfil' 'já configurado'
+        }
+        else {
+            # Um perfil que já exista ali é mantido; o carregador entra no final
+            if ($loaderExists) { $loaderLines = @('') + $loaderLines }
+            Add-Content -Path $loader -Value $loaderLines -Encoding utf8
+            Write-Item Ok 'Carregador do perfil' $loader
+        }
+    }
+    catch {
+        Write-Item Fail 'Carregador do perfil' "não foi possível gravar $loader ($($_.Exception.Message)); sem ele o perfil local não é carregado"
     }
     Write-Item Info 'Pasta do perfil' $profileDir
 }
@@ -1006,38 +1062,14 @@ function Step-GitHubTools {
     Update-SessionPath
 }
 
-function Step-WslUbuntu {
-    # Sem isso o wsl.exe responde em UTF-16 e a lista de distros vem com bytes nulos
-    $env:WSL_UTF8 = '1'
-
+function Step-Wsl {
     $null = & wsl.exe --update 2>&1
     if ($LASTEXITCODE -eq 0) { Write-Item Ok 'WSL atualizado' }
     else { Write-Item Warn 'wsl --update' "retornou $LASTEXITCODE" }
     $null = & wsl.exe --set-default-version 2 2>&1
 
-    # Na versão Home o WSL só serve de motor ao Docker Desktop, que cria a própria distro
-    if ($Edition -ne 'Pro') {
-        Write-Item Skip $WslDistro 'não instalado na versão Home (o Docker Desktop usa a própria distro)'
-        return
-    }
-
-    $distros = @(& wsl.exe --list --quiet 2>$null) -replace "`0", '' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    if ($distros -contains $WslDistro) {
-        Write-Item Skip $WslDistro 'já instalado'
-        return
-    }
-
-    # --no-launch: instala sem abrir o Ubuntu; o usuário Linux é criado na primeira abertura
-    $null = & wsl.exe --install --distribution $WslDistro --no-launch 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Item Ok $WslDistro 'instalado; abra o Ubuntu para criar o usuário Linux'
-    }
-    elseif ($script:RebootNeeded) {
-        Write-Item Warn $WslDistro 'o WSL acabou de ser habilitado; reinicie e rode o setup de novo para instalar'
-    }
-    else {
-        Write-Item Fail $WslDistro "wsl --install retornou $LASTEXITCODE"
-    }
+    # O setup não instala nenhuma distro: o WSL só serve de motor ao Docker Desktop
+    Write-Item Info 'Distros' 'nenhuma instalada pelo setup; o Docker Desktop cria a própria'
 }
 
 function Step-DockerDesktop {
@@ -1149,7 +1181,7 @@ function Select-Edition {
         Write-Host "$($Ui.Bold)Versão do Windows$($Ui.Reset) $($Ui.Dim)(detectada: $(($OsInfo.Caption -replace '^Microsoft ', '')))$($Ui.Reset)"
         Write-Host "  $($Ui.Accent)1$($Ui.Reset)  Windows 11 Home  PowerShell 7 com as ferramentas de DevOps + Docker Desktop e k3s (k3d). Sem Ubuntu."
         if ($HyperVAvailable) {
-            Write-Host "  $($Ui.Accent)2$($Ui.Reset)  Windows 11 Pro   PowerShell 7 + WSL2 com Ubuntu 26.04, Hyper-V, Área Restrita, Vagrant, Packer e Multipass."
+            Write-Host "  $($Ui.Accent)2$($Ui.Reset)  Windows 11 Pro   Tudo da Home + Hyper-V, Área Restrita, Vagrant, Packer e Multipass."
         }
         else {
             Write-Host "$($Ui.Dim)  2  Windows 11 Pro   indisponível: esta edição do Windows não tem Hyper-V$($Ui.Reset)"
@@ -1218,11 +1250,11 @@ $Edition = Select-Edition
 $Steps = @(
     @{ Title = 'Pré-requisitos';                      Action = { Step-Prerequisites }; Critical = $true }
     @{ Title = 'Recursos do Windows';                 Action = { Step-WindowsFeatures }; Skip = $SkipWindowsFeatures.IsPresent }
-    @{ Title = $(if ($Edition -eq 'Pro') { "WSL2 e $WslDistro" } else { 'WSL2 (motor do Docker Desktop)' }); Action = { Step-WslUbuntu } }
+    @{ Title = 'WSL2 (motor do Docker Desktop)';      Action = { Step-Wsl } }
     @{ Title = 'Configuração do WSL (.wslconfig)';    Action = { Step-WslConfig } }
     @{ Title = 'Remover apps pré-instalados';         Action = { Step-RemoveBloatware } }
     @{ Title = 'Ferramentas e aplicativos (winget)';  Action = { Step-CliTools } }
-    @{ Title = 'Docker Desktop e k3d';                Action = { Step-DockerDesktop }; Skip = $Edition -ne 'Home' }
+    @{ Title = 'Docker Desktop e k3d';                Action = { Step-DockerDesktop } }
     @{ Title = 'CLIs do Kubernetes (GitHub Releases)'; Action = { Step-GitHubTools } }
     @{ Title = 'Hyper-V e VMs';                       Action = { Step-HyperV }; Skip = $Edition -ne 'Pro' }
     @{ Title = 'Ajustes de desenvolvedor';            Action = { Step-DeveloperSettings } }

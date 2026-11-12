@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-Um script para o Windows 11 **Home e Pro**, focado no terminal: instala as CLIs de DevOps/SRE via winget, configura o PowerShell 7 e o Windows Terminal e implanta um perfil rápido com prompt nativo. Na versão Home o lab de Kubernetes roda no Docker Desktop (k3s via k3d); na Pro ele prepara o WSL2 com Ubuntu 26.04 e o Hyper-V.
+Um script para o Windows 11 **Home e Pro**, focado no terminal: instala as CLIs de DevOps/SRE via winget, configura o PowerShell 7 e o Windows Terminal e implanta um perfil rápido com prompt nativo. O lab de Kubernetes roda no Docker Desktop (k3s via k3d) nas duas versões, sem Ubuntu; a Pro acrescenta o Hyper-V e as ferramentas de VM. O perfil e os scripts pessoais ficam em `%USERPROFILE%\.config\powershell`, fora do OneDrive.
 
 | Arquivo | Função |
 |---|---|
@@ -20,7 +20,7 @@ No início, o script pergunta qual versão instalar e sugere a da edição detec
 ```
 Versão do Windows (detectada: Windows 11 Pro)
   1  Windows 11 Home  PowerShell 7 com as ferramentas de DevOps + Docker Desktop e k3s (k3d). Sem Ubuntu.
-  2  Windows 11 Pro   PowerShell 7 + WSL2 com Ubuntu 26.04, Hyper-V, Área Restrita, Vagrant, Packer e Multipass.
+  2  Windows 11 Pro   Tudo da Home + Hyper-V, Área Restrita, Vagrant, Packer e Multipass.
   Opção [2]:
 ```
 
@@ -32,15 +32,14 @@ Versão do Windows (detectada: Windows 11 Pro)
 | Remoção dos apps pré-instalados (LinkedIn, Paciência, Notícias, Family, Clipchamp...) e da pesquisa web do Bing | ✓ | ✓ |
 | sudo do Windows, Finalizar Tarefa e painel de detalhes do Explorer | ✓ | ✓ |
 | Aparência leve (sem animações, transparência e anúncios; Widgets ativos com o tempo) | ✓ | — |
-| WSL2 | ✓ (motor do Docker Desktop) | ✓ |
-| Docker Desktop + k3d (k3s em contêineres) | ✓ | — |
-| Ubuntu 26.04 no WSL2 (Docker e k3s pelo playbook) | — | ✓ |
+| WSL2, só como motor do Docker Desktop (sem Ubuntu) | ✓ | ✓ |
+| Docker Desktop + k3d (k3s em contêineres) | ✓ | ✓ |
 | Hyper-V (plataforma, Gerenciador `virtmgmt.msc` e módulo do PowerShell) | — | ✓ |
 | Área Restrita do Windows (Windows Sandbox) | — | ✓ |
 | Seu usuário no grupo Administradores do Hyper-V (VMs sem abrir como admin) | — | ✓ |
 | Vagrant (provider padrão: Hyper-V), Packer e Multipass | — | ✓ |
 
-A versão **Home** não instala o Ubuntu: as ferramentas rodam no PowerShell 7 e o Docker e o k3s vêm do **Docker Desktop**, que usa o WSL2 como motor (com a própria distro `docker-desktop`) e só ocupa memória enquanto está aberto. Numa máquina Pro dá para escolher a Home mesmo assim (opção 1), para ter uma instalação mais leve. No Windows 11 Home a opção 2 aparece como indisponível, porque o Home não tem Hyper-V.
+Nenhuma das versões instala o Ubuntu: as ferramentas rodam no PowerShell 7 e o Docker e o k3s vêm do **Docker Desktop**, que usa o WSL2 como motor (com a própria distro `docker-desktop`) e só ocupa memória enquanto está aberto. Numa máquina Pro dá para escolher a Home mesmo assim (opção 1), para ter uma instalação mais leve. No Windows 11 Home a opção 2 aparece como indisponível, porque o Home não tem Hyper-V.
 
 Por ser mais leve, a versão Home também serve para dispositivos portáteis com Windows 11, como ROG Ally, Legion Go e similares.
 
@@ -48,7 +47,7 @@ Para não perguntar, use `-Versao Home` ou `-Versao Pro`; sem terminal interativ
 
 ## Configuração do WSL (.wslconfig)
 
-Nas versões Home e Pro (e no Enterprise), o setup grava o `%USERPROFILE%\.wslconfig`. Ele vale para o Ubuntu da versão Pro e para a distro do Docker Desktop da versão Home:
+Nas versões Home e Pro (e no Enterprise), o setup grava o `%USERPROFILE%\.wslconfig`. Ele vale para a distro do Docker Desktop:
 
 ```ini
 [wsl2]
@@ -86,7 +85,7 @@ As chaves acima são reaplicadas a cada execução do setup (com backup do arqui
 - Conta com permissão de administrador
 - winget (App Installer da Microsoft Store)
 - Virtualização habilitada na BIOS (WSL2, Docker Desktop e Hyper-V)
-- Docker Desktop (versão Home): gratuito para uso pessoal, educação e empresas pequenas; empresas maiores precisam de assinatura
+- Docker Desktop: gratuito para uso pessoal, educação e empresas pequenas; empresas maiores precisam de assinatura
 - Conexão ativa com a Internet
 
 ## Como Executar
@@ -101,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 ```
 
 4. Reinicie o Windows ao final, se o resumo pedir.
-5. Siga o [Primeiro uso](#primeiro-uso) da versão escolhida.
+5. Siga o [Primeiro uso](#primeiro-uso).
 
 ### Parâmetros
 
@@ -119,19 +118,19 @@ powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
 
 1. **Pré-requisitos**: Windows 11, dispositivo, versão, winget, reinicialização pendente, ExecutionPolicy e PSGallery.
 2. **Recursos do Windows**: WSL e Plataforma de Máquina Virtual; na Pro também Hyper-V e Área Restrita; Cliente Telnet nas duas.
-3. **WSL2**: `wsl --update` e WSL 2 como padrão; na Pro também instala o Ubuntu 26.04.
+3. **WSL2**: `wsl --update` e WSL 2 como padrão. Nenhuma distro é instalada.
 4. **Configuração do WSL**: grava o `.wslconfig` com rede espelhada, DNS e proxy do Windows, limites de memória e processadores, recuperação de memória e disco esparso (veja [Configuração do WSL](#configuração-do-wsl-wslconfig)).
-5. **Remover apps pré-instalados**: LinkedIn, Paciência, Notícias (Microsoft Start), Pesquisa do Bing, Hub de Comentários, Family Safety, Clipchamp, Notas Autoadesivas, Clima, Dicas, Microsoft 365, Teams e Outlook pessoais, Spotify, TikTok, WhatsApp e outros, do usuário e da imagem do Windows. Também desliga a pesquisa web do Bing no Iniciar e impede que o Windows reinstale apps sugeridos.
+5. **Remover apps pré-instalados**: LinkedIn, Paciência, Notícias (Microsoft Start), Pesquisa do Bing, Hub de Comentários, Family Safety, Clipchamp, Notas Autoadesivas, Clima, Dicas, Teams, Outlook (novo), To Do, Whiteboard, Power Automate, Assistência Rápida, Spotify, TikTok, WhatsApp e outros, do usuário e da imagem do Windows. Também desliga a pesquisa web do Bing no Iniciar e impede que o Windows reinstale apps sugeridos.
 6. **Ferramentas e aplicativos (winget)**: os grupos das duas versões e os da versão escolhida.
-7. **Docker Desktop e k3d** (Home): seu usuário no grupo `docker-users`.
+7. **Docker Desktop e k3d**: seu usuário no grupo `docker-users`.
 8. **CLIs do Kubernetes (GitHub Releases)**: `kubeseal` e `kubectl-argo-rollouts`, que não estão no winget.
 9. **Hyper-V e VMs** (Pro): grupo Administradores do Hyper-V e o Hyper-V como provider padrão do Vagrant.
 10. **Ajustes de desenvolvedor**: Finalizar Tarefa na barra de tarefas, `sudo` do Windows ativado (modo inline), painel de detalhes do Explorer com a pré-visualização da imagem (`Alt+Shift+P`), extensões e arquivos ocultos visíveis, caminhos longos, modo de desenvolvedor e defaults do git.
 11. **Aparência leve** (Home): efeitos visuais em melhor desempenho (mantendo a suavização de fontes e as miniaturas), sem transparência, sem atraso nos apps de inicialização e sem sugestões e anúncios no Iniciar. Os Widgets continuam ativos, com o tempo na barra de tarefas. Vale no próximo login.
 12. **Fonte Nerd Font**: MesloLGM Nerd Font.
-13. **Módulos do PowerShell**: PSReadLine, Terminal-Icons, PSFzf, CompletionPredictor e Az.
+13. **Módulos do PowerShell**: PSReadLine, Terminal-Icons, PSFzf, CompletionPredictor e Az, instalados para todos os usuários (em Arquivos de Programas, fora de Documentos e do OneDrive).
 14. **Windows Terminal**: PowerShell 7 como padrão e a Nerd Font (com backup do `settings.json`).
-15. **Perfil do PowerShell**: copia o perfil (com backup), desbloqueia o arquivo e cria o `profile.local.ps1`.
+15. **Perfil do PowerShell**: copia o perfil para `%USERPROFILE%\.config\powershell` (com backup), desbloqueia o arquivo, cria o `profile.local.ps1` e a pasta `scripts`, e grava o carregador na pasta do PowerShell (veja [Onde fica o perfil](#onde-fica-o-perfil)).
 16. **Atualizar aplicativos**: só com `-UpgradeAll`.
 
 A saída do winget fica em `%TEMP%\setup-windows-<data>\winget.log`.
@@ -143,10 +142,10 @@ A lista `$WingetPackages` segue a mesma ordem da lista antiga do Chocolatey, com
 | Grupo | Versão | Pacotes |
 |---|---|---|
 | Trabalho / DevOps / SRE | Home e Pro | Cursor, Vagrant, Azure CLI, Azure Storage Explorer, Slack, Teams, VS Code, Antigravity, Claude Code (CLI), Claude (app desktop), Git, Terraform, AWS CLI, Argo CD CLI, k9s, Helm, Postman, Grok CLI, kubelogin, Google Cloud SDK |
-| Pessoal / Opcional | Home e Pro | Discord, Epic Games, Steam, CCleaner, Zoom, Chrome, Firefox, Remote Desktop Manager, PowerToys, Valorant (servidor BR), Google Drive, OBS Studio, Notion, Obsidian, WebView2 Runtime, Sublime Text 4, Oh My Posh, TreeSize Free, Roblox, Flameshot 12.1.0 |
-| Terminal e shell | Home e Pro | PowerShell 7, Windows Terminal, GitHub CLI, Neovim, fzf, zoxide, eza, ripgrep, fd, bat, delta, jq, yq |
+| Pessoal / Opcional | Home e Pro | Discord, Epic Games, Steam, CCleaner, Zoom, Chrome, Firefox, Remote Desktop Manager, PowerToys, Valorant (servidor BR), Google Drive, OBS Studio, Notion, Obsidian, WebView2 Runtime, Sublime Text 4, TreeSize Free, Roblox, Flameshot 12.1.0 |
+| Terminal e shell | Home e Pro | PowerShell 7, Windows Terminal, GitHub CLI, Neovim, fzf, zoxide, eza, ripgrep, fd, bat, delta, jq, yq, Oh My Posh (só para instalar a Nerd Font) |
 | Kubernetes | Home e Pro | kubectl, kubectx, kubens, stern, Headlamp |
-| Docker Desktop | Home | Docker Desktop, k3d |
+| Docker Desktop | Home e Pro | Docker Desktop, k3d |
 | Virtualização | Pro | Vagrant, Packer, Multipass |
 
 O módulo Az do PowerShell (`azurepowershell`) fica na lista `$PSModules` e também é instalado; comente a linha dele se não usar Azure (ele é grande). O driver e o app da NVIDIA não estão no winget. Para fazer um grupo entrar só numa versão, adicione-o em `$EditionGroups`. Um item no formato `Id@versão` instala essa versão e faz um `winget pin`. O Valorant tem um pacote por servidor: troque o sufixo de `RiotGames.Valorant.BR` se precisar.
@@ -176,7 +175,7 @@ O setup pode ser executado quantas vezes quiser: o que já está instalado ou co
 - Sem acesso ao GitHub, o kubeseal e o kubectl-argo-rollouts já instalados são mantidos, com um aviso.
 - Se o Oh My Posh estiver comentado, a etapa da Nerd Font é pulada com um aviso.
 
-Os apps pré-instalados que o setup remove ficam na lista `$BloatwareApps`, do mesmo jeito: para **manter** um deles (ex.: Relógio ou Media Player), comente a linha. Loja, Calculadora, Fotos, Bloco de Notas, Paint, Ferramenta de Captura, Câmera, Terminal, Edge e os apps do Xbox nunca são removidos. Um app removido pode ser reinstalado pela Microsoft Store.
+Os apps pré-instalados que o setup remove ficam na lista `$BloatwareApps`, do mesmo jeito: para **manter** um deles (ex.: Relógio ou Media Player), comente a linha. Loja, Calculadora, Fotos, Bloco de Notas, Paint, Ferramenta de Captura, Câmera, Terminal, Edge e os apps do Xbox nunca são removidos. Um app removido pode ser reinstalado pela Microsoft Store. O pacote `MSTeams` é o Teams novo, pessoal e corporativo, e `Microsoft.OutlookForWindows` é o novo Outlook: num PC em que você usa um deles no trabalho, comente a linha. O Microsoft 365 (hub do Office) vem comentado e não é removido.
 
 ## Perfil do PowerShell 7
 
@@ -185,33 +184,37 @@ Os apps pré-instalados que o setup remove ficam na lista `$BloatwareApps`, do m
 - **PSReadLine** com predição em lista e histórico/arquivos com fzf (`Ctrl+r` / `Ctrl+t`).
 - **Atalhos** de git e Kubernetes (`kgp`, `kev`, `kbad`, `ksecret`, `knetshoot`…).
 - **Troca de conta** com fzf: `awsp`, `azsub` e `gcpp`.
+- **Git Bash sem WSL e sem a console do Git Bash**: `gbash` abre o bash do Git for Windows na mesma janela; `gbash script.sh` e `gbash -c 'comando'` rodam e voltam para o PowerShell.
 
 Personalizações vão no `profile.local.ps1`, na mesma pasta do perfil. O setup nunca sobrescreve esse arquivo.
 
+### Onde fica o perfil
+
+Tudo fica no disco local, em `%USERPROFILE%\.config\powershell`, e nada no OneDrive:
+
+| Caminho | Conteúdo |
+|---|---|
+| `Microsoft.PowerShell_profile.ps1` | O perfil, sobrescrito a cada execução do setup (com backup) |
+| `profile.local.ps1` | Suas customizações |
+| `scripts\` | Scripts pessoais usados pelo perfil (ex.: `aleonx.ps1`) |
+
+O PowerShell só procura o perfil do usuário em `Documentos\PowerShell`, que o OneDrive costuma redirecionar. Por isso o setup grava um carregador de três linhas no perfil de todos os usuários (`$PSHOME\Microsoft.PowerShell_profile.ps1`, em Arquivos de Programas), que só carrega o perfil local de quem abriu o terminal. Um perfil antigo deste setup em `Documentos\PowerShell` é renomeado para `.bak-<data>` e o `profile.local.ps1` de lá é copiado para a pasta nova.
+
 ### Lab de Kubernetes (k3s e Argo CD)
 
-Os mesmos comandos nas duas versões; muda só onde o k3s roda:
-
-| | Home | Pro |
-|---|---|---|
-| Onde roda | Contêineres do Docker Desktop (k3d) | Ubuntu do WSL2 |
-| Contexto do kubectl | `k3d-lab` | `k3s` |
-| Instalação do Argo CD e add-ons | `lab-argocd` (`-Grafana` inclui o kube-prometheus-stack) | [playbook do WSL2](../ubuntu-26.04-wsl2/README.md) com `--tags k3s -e k3s_lab=true` |
+Nas duas versões o k3s roda em contêineres do Docker Desktop (k3d), no contexto `k3d-lab` do kubectl.
 
 | Comando | Função |
 |---|---|
-| `k3s-up` / `k3s-down` / `k3s-status` | Liga, desliga e mostra o cluster. Na Home, o primeiro `k3s-up` cria o cluster `lab` (o Docker Desktop precisa estar aberto) |
-| `lab-argocd` | Só na Home: Argo CD, Sealed Secrets e Argo Rollouts como Applications do Argo CD |
+| `k3s-up` / `k3s-down` / `k3s-status` | Liga, desliga e mostra o cluster. O primeiro `k3s-up` cria o cluster `lab` (o Docker Desktop precisa estar aberto) |
+| `lab-argocd` | Argo CD, Sealed Secrets e Argo Rollouts como Applications do Argo CD (`-Grafana` inclui o kube-prometheus-stack) |
 | `argocd-ui`, `argocd-pass`, `argocd-login` | Argo CD em `https://localhost:8080` |
 | `rollouts-ui` | Dashboard do Argo Rollouts em `http://localhost:3100` |
 | `grafana-ui` | Grafana em `http://localhost:3000`, se o add-on estiver ligado |
-| `docker ...`, `k3d ...` | Só na Pro: repassados para o Docker do Ubuntu |
 
 Com o cluster ligado, `kubectl`, `k9s`, `helm`, `argocd`, `kubeseal`, `kubectl argo rollouts` e o Headlamp do Windows acessam o cluster pelo `localhost`.
 
 ## Primeiro uso
-
-### Versão Home
 
 1. Faça logoff e login (ou reinicie), para valer o grupo `docker-users`.
 2. Abra o **Docker Desktop** uma vez, aceite os termos e espere ele ficar pronto. Em *Settings › General*, desmarque *Start Docker Desktop when you sign in* para ele só ocupar memória quando você usar.
@@ -225,12 +228,8 @@ argocd-ui     # abre o Argo CD em https://localhost:8080
 
 Ao terminar, `k3s-down` para o cluster; fechar o Docker Desktop libera a memória.
 
-### Versão Pro
+Na versão Pro, o Hyper-V abre em `virtmgmt.msc`, o `multipass launch --name lab` cria uma VM Ubuntu e a Área Restrita fica no menu Iniciar.
 
-1. Se o setup avisar que o WSL acabou de ser habilitado, reinicie e rode o setup de novo para instalar o Ubuntu.
-2. Abra o Ubuntu (`wsl -d Ubuntu-26.04`) e crie o usuário Linux.
-3. Rode o [playbook do WSL2](../ubuntu-26.04-wsl2/README.md) para instalar o que precisar nele; para o lab, use `--tags k3s -e k3s_lab=true`.
-4. No PowerShell 7: `k3s-up` e depois `argocd-ui`.
 ## Licença
 
 Distribuído sob a [Licença MIT](./LICENSE).
