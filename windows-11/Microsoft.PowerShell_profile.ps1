@@ -1,8 +1,8 @@
 ﻿# =============================================================================
-#  Perfil PowerShell 7 · SRE/DevOps
-#  Implantado pelo setup-windows.ps1 em %USERPROFILE%\.config\powershell, fora do
-#  OneDrive (sobrescrito a cada execução, com backup).
-#  Customizações pessoais: profile.local.ps1, na mesma pasta.
+#  PowerShell 7 profile - SRE/DevOps
+#  Deployed by setup-windows.ps1 to %USERPROFILE%\.config\powershell, outside
+#  OneDrive (overwritten on every run, with a backup).
+#  Personal customizations: profile.local.ps1, in the same folder.
 # =============================================================================
 
 $ProfileDir = $PSScriptRoot
@@ -14,8 +14,8 @@ if (Test-Path "$env:WINDIR\System32\OpenSSH\ssh.exe") {
     $env:GIT_SSH = "$env:WINDIR\System32\OpenSSH\ssh.exe"
 }
 
-# Índice dos executáveis do PATH, montado uma vez: um Get-Command para um
-# comando que não existe varre o PATH inteiro e custa centenas de milissegundos.
+# Index of the executables on the PATH, built once: a Get-Command for a command
+# that does not exist scans the whole PATH and costs hundreds of milliseconds.
 $PathCommands = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($dir in $env:Path -split ';') {
     if (-not $dir -or -not [IO.Directory]::Exists($dir)) { continue }
@@ -30,10 +30,10 @@ function Test-Cmd([string]$Name) { $PathCommands.Contains($Name) }
 #endregion
 
 #region Prompt ------------------------------------------------------------------
-# Prompt nativo com o visual do tema pixelrobots-az-custom do Oh My Posh. O
-# oh-my-posh.exe custava ~0,5 s a cada prompt nesta máquina; aqui o único
-# processo externo é o git, e só dentro de repositórios. Os dados de nuvem vêm
-# dos arquivos de config de cada CLI, relidos apenas quando mudam.
+# Native prompt with the look of the Oh My Posh pixelrobots-az-custom theme.
+# oh-my-posh.exe cost ~0.5 s per prompt on this machine; here the only external
+# process is git, and only inside repositories. Cloud data comes from each CLI's
+# config files, re-read only when they change.
 
 $PromptColor = @{
     White  = $PSStyle.Foreground.FromRgb(0xFFFFFF)
@@ -76,7 +76,7 @@ $PromptIsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.Windo
 $PromptFileCache = @{}
 $PromptRam = @{ At = [datetime]::MinValue; Text = '' }
 
-# Lê e interpreta um arquivo, reaproveitando o resultado enquanto ele não mudar
+# Reads and parses a file, reusing the result while the file does not change
 function Read-PromptFile([string]$Path, [scriptblock]$Parse) {
     $info = [IO.FileInfo]::new($Path)
     if (-not $info.Exists) { return $null }
@@ -93,7 +93,7 @@ function Get-PromptRam {
     if (([datetime]::UtcNow - $PromptRam.At).TotalSeconds -ge 5) {
         $os = Get-CimInstance Win32_OperatingSystem -Property TotalVisibleMemorySize, FreePhysicalMemory -ErrorAction Ignore
         if ($os) {
-            # Valores em KB; / 1MB converte para GB, truncado como no Oh My Posh
+            # Values in KB; / 1MB converts to GB, truncated like Oh My Posh does
             $PromptRam.Text = '{0}/{1}GB' -f [math]::Truncate(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB),
                 [math]::Truncate($os.TotalVisibleMemorySize / 1MB)
         }
@@ -167,7 +167,7 @@ function Get-PromptAws {
 function Get-PromptGit {
     if ($PWD.Provider.Name -ne 'FileSystem') { return }
 
-    # Procura o .git subindo as pastas, sem chamar o git fora de repositórios
+    # Looks for .git walking up the folders, without calling git outside repositories
     $gitDir = $null
     for ($dir = $PWD.ProviderPath; $dir; $dir = Split-Path $dir -Parent) {
         $candidate = Join-Path $dir '.git'
@@ -202,7 +202,7 @@ function Get-PromptGit {
         }
     }
 
-    # Ícone do serviço onde está o remote origin
+    # Icon of the service hosting the origin remote
     $url = if ([IO.Directory]::Exists($gitDir)) {
         Read-PromptFile (Join-Path $gitDir 'config') {
             param($text)
@@ -220,7 +220,7 @@ function Get-PromptGit {
     $headText = if ($head -and $head -ne '(detached)') { "$($PromptIcon.Branch)$head" }
     else { "$($PromptIcon.Branch)detached at $($PromptIcon.Commit)$("$oid".Substring(0, [Math]::Min(7, "$oid".Length)))" }
 
-    # Mesmos símbolos do Oh My Posh; sem upstream (ou upstream removido) também vira ≢
+    # Same symbols as Oh My Posh; no upstream (or a deleted upstream) also shows the not-identical sign
     $branchStatus = if (-not $hasUpstream -or -not $hasAheadBehind) { '≢' }
     elseif ($ahead -and $behind) { "↑$ahead ↓$behind" }
     elseif ($ahead) { "↑$ahead" }
@@ -244,7 +244,7 @@ function prompt {
     $c = $PromptColor
     $i = $PromptIcon
 
-    # Linha 1: hora, RAM e contextos de nuvem
+    # Line 1: time, RAM and cloud contexts
     $now = [datetime]::Now
     $time = $now.ToString('h:mm:ss tt', [cultureinfo]::InvariantCulture) + ' ' + $now.ToString('zz')
     $line1 = "$($c.White)[$($i.Calendar) $time][$($i.Ram) RAM: $(Get-PromptRam)]"
@@ -266,7 +266,7 @@ function prompt {
         $line1 += "$($c.AwsBg)$($c.Black) $($i.Aws) $($aws.Profile)$region$($c.Reset)$($c.White)"
     }
 
-    # Linha 2: pasta e git
+    # Line 2: folder and git
     $path = $PWD.Path
     if ($path -like "$HOME*") { $path = '~' + $path.Substring($HOME.Length) }
     $line2 = "$($c.White)$([char]0x2523)[$($i.Folder) $path]"
@@ -280,7 +280,7 @@ function prompt {
         $line2 += ']'
     }
 
-    # Linha 3: admin, erro do último comando e o cursor
+    # Line 3: admin, last command error and the cursor
     $line3 = "$($c.White)$([char]0x2514)$([char]0x2500)"
     if ($PromptIsAdmin) { $line3 += "$($c.Yellow)[#]$($c.White)" }
     if ($failed) { $line3 += "$($c.Pink)[$($c.White)$($i.Error)$($c.Pink) Error, check your command]$($c.White)" }
@@ -289,13 +289,13 @@ function prompt {
     "$line1$($c.Reset)`n$line2$($c.Reset)`n$line3>$($c.Reset) "
 }
 
-# Linha de entrada em vermelho quando o comando digitado tem erro de sintaxe
+# Input line in red when the typed command has a syntax error
 if ($Host.Name -eq 'ConsoleHost') {
     Set-PSReadLineOption -PromptText '> ', "$($PromptColor.Red)$($PromptIcon.ErrorLine)$($PromptColor.Reset) " -ContinuationPrompt ' '
 }
 #endregion
 
-#region PSReadLine e fzf -------------------------------------------------------
+#region PSReadLine and fzf -----------------------------------------------------
 if ($Host.Name -eq 'ConsoleHost') {
     Import-Module CompletionPredictor -ErrorAction Ignore
     try {
@@ -304,13 +304,13 @@ if ($Host.Name -eq 'ConsoleHost') {
             -Colors @{ InlinePrediction = $PSStyle.Foreground.BrightBlack }
     }
     catch {
-        # Sem suporte a VT (ex.: saída redirecionada): fica sem predição
+        # No VT support (e.g. redirected output): no prediction
     }
     Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
     Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
     Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
 
-    # PSFzf só é carregado no primeiro Ctrl+r/Ctrl+t para não atrasar a abertura
+    # PSFzf is only loaded on the first Ctrl+r/Ctrl+t so it does not slow down startup
     if (Test-Cmd fzf) {
         $global:LoadPsFzf = {
             if (-not (Get-Module PSFzf)) {
@@ -330,9 +330,9 @@ if (Test-Cmd zoxide) {
 }
 #endregion
 
-#region Autocompletar -------------------------------------------------------------
-# Os scripts de completion são gerados uma vez por semana e ficam em cache;
-# gerar a cada abertura custa centenas de milissegundos por ferramenta.
+#region Completion ----------------------------------------------------------------
+# Completion scripts are generated once a week and cached; generating them on
+# every startup costs hundreds of milliseconds per tool.
 $CompletionCache = Join-Path $env:LOCALAPPDATA 'pwsh-completions'
 $CompletionSources = [ordered]@{
     kubectl = { kubectl completion powershell }
@@ -356,7 +356,7 @@ if ($__kubectlCompleterBlock) {
     Register-ArgumentCompleter -CommandName k -ScriptBlock $__kubectlCompleterBlock
 }
 
-# Azure CLI (snippet oficial da Microsoft)
+# Azure CLI (official Microsoft snippet)
 if (Test-Cmd az) {
     Register-ArgumentCompleter -Native -CommandName az -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)
@@ -380,16 +380,16 @@ if (Test-Cmd az) {
 }
 #endregion
 
-#region Aliases nativos -----------------------------------------------------------
-# Aliases nativos têm precedência sobre funções, então os que têm o mesmo nome
-# dos atalhos abaixo precisam sair (gc=Get-Content, gl=Get-Location,
+#region Built-in aliases ----------------------------------------------------------
+# Built-in aliases take precedence over functions, so the ones that share a name
+# with the shortcuts below must go (gc=Get-Content, gl=Get-Location,
 # gp=Get-ItemProperty, gcm=Get-Command, gcb=Get-Clipboard, h=Get-History).
 foreach ($name in 'gc', 'gl', 'gp', 'gcm', 'gcb', 'ls', 'h') {
     Remove-Alias -Name $name -Force -ErrorAction Ignore
 }
 #endregion
 
-#region Navegação e arquivos ----------------------------------------------------------
+#region Navigation and files ----------------------------------------------------------
 if (Test-Cmd eza) {
     function ls { eza --icons --group-directories-first @args }
     function ll { eza -l --icons --git --group-directories-first @args }
@@ -429,7 +429,7 @@ Set-Alias j Get-Job
 if (Test-Cmd nvim) { Set-Alias vim nvim }
 #endregion
 
-#region Sistema e rede ---------------------------------------------------------------
+#region System and network -----------------------------------------------------------
 function df {
     Get-PSDrive -PSProvider FileSystem | Where-Object Used |
         Select-Object Name,
@@ -438,7 +438,7 @@ function df {
             Root
 }
 
-# Tamanho de cada item da pasta atual, do menor para o maior (equivale a du -sh * | sort -h)
+# Size of each item in the current folder, smallest first (same as du -sh * | sort -h)
 function dus {
     Get-ChildItem -Force | ForEach-Object {
         $bytes = if ($_.PSIsContainer) {
@@ -459,7 +459,7 @@ function ports {
 
 function ping { ping.exe -n 5 @args }
 
-# Histórico completo (de todas as sessões) com fzf; executa o comando escolhido
+# Full history (all sessions) with fzf; runs the chosen command
 function h {
     $lines = Get-Content (Get-PSReadLineOption).HistorySavePath
     [array]::Reverse($lines)
@@ -472,9 +472,9 @@ function h {
 #endregion
 
 #region Git Bash -------------------------------------------------------------------
-# bash do Git for Windows na mesma janela, sem WSL e sem a console do Git Bash:
-#   gbash · gbash script.sh · gbash -c 'comando'
-# O "bash" sozinho é o atalho do WSL em System32, por isso o caminho completo.
+# Git for Windows bash in the same window, without WSL and without the Git Bash console:
+#   gbash | gbash script.sh | gbash -c 'command'
+# Plain "bash" is the WSL launcher in System32, hence the full path.
 $GitBash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'
 if (Test-Path $GitBash) {
     function gbash {
@@ -498,7 +498,7 @@ function gcd { git checkout dev @args }
 function gpl { git pull origin main @args }
 function gcl { git clone @args }
 
-# add + commit + push de tudo, com mensagem opcional: d "corrige X"
+# add + commit + push of everything, with an optional message: d "fix X"
 function d([string]$Message = 'Automated commit') {
     git add .
     git commit -m $Message
@@ -536,13 +536,13 @@ function kapply { kubectl apply -f @args }
 function kctx { if (Test-Cmd kubectx) { kubectx @args } else { kubectl config use-context @args } }
 function kns { if (Test-Cmd kubens) { kubens @args } else { kubectl config set-context --current --namespace @args } }
 
-# Eventos do namespace, mais recentes por último
+# Namespace events, most recent last
 function kev { kubectl get events --sort-by=.lastTimestamp @args }
 
-# Pods que não estão Running nem Succeeded, em todos os namespaces
+# Pods that are neither Running nor Succeeded, in all namespaces
 function kbad { kubectl get pods -A '--field-selector=status.phase!=Running,status.phase!=Succeeded' }
 
-# Decodifica todas as chaves de um Secret: ksecret <nome> [-n ns]
+# Decodes every key of a Secret: ksecret <name> [-n ns]
 function ksecret {
     param([Parameter(Mandatory)][string]$Name, [Parameter(ValueFromRemainingArguments)][string[]]$Rest)
     $secret = kubectl get secret $Name @Rest -o json | ConvertFrom-Json
@@ -554,16 +554,16 @@ function ksecret {
     }
 }
 
-# Pod efêmero com ferramentas de rede (dig, curl, tcpdump...) no namespace atual
+# Ephemeral pod with network tools (dig, curl, tcpdump...) in the current namespace
 function knetshoot {
     $command = if ($args) { $args } else { 'zsh' }
     kubectl run "netshoot-$(Get-Random -Maximum 9999)" --rm -it --restart=Never --image=nicolaka/netshoot -- @command
 }
 #endregion
 
-#region Lab k3s ----------------------------------------------------------------------------
-# O k3s roda em contêineres do Docker Desktop, via k3d, contexto "k3d-lab". kubectl, k9s,
-# helm, argocd, kubeseal e Headlamp acessam o cluster pelo localhost.
+#region k3s lab ----------------------------------------------------------------------------
+# k3s runs in Docker Desktop containers, via k3d, context "k3d-lab". kubectl, k9s,
+# helm, argocd, kubeseal and Headlamp reach the cluster through localhost.
 $LabContext = $null
 
 if (Test-Cmd k3d) {
@@ -579,8 +579,8 @@ if (Test-Cmd k3d) {
         $true
     }
 
-    # Cria o cluster na primeira vez e só o religa nas seguintes; o k3d grava o
-    # contexto k3d-lab no ~/.kube/config
+    # Creates the cluster the first time and just restarts it afterwards; k3d writes the
+    # k3d-lab context to ~/.kube/config
     function k3s-up {
         if (-not (Test-DockerReady)) { return }
         $exists = @(k3d cluster list -o json | ConvertFrom-Json) | Where-Object name -eq $LabCluster
@@ -594,8 +594,8 @@ if (Test-Cmd k3d) {
 
     function k3s-status { k3d cluster list }
 
-    # Argo CD e os add-ons do lab; o próprio Argo CD instala e mantém
-    # cada add-on. -Grafana inclui o kube-prometheus-stack (~1 GB a mais de RAM).
+    # Argo CD and the lab add-ons; Argo CD itself installs and maintains each
+    # add-on. -Grafana adds kube-prometheus-stack (~1 GB more RAM).
     function lab-argocd {
         param([switch]$Grafana)
         $ctx = '--context', $LabContext
@@ -634,33 +634,33 @@ if (Test-Cmd k3d) {
     }
 }
 
-# Comandos do Argo CD, Rollouts e Grafana, no contexto do lab que existir
+# Argo CD, Rollouts and Grafana commands, in whichever lab context exists
 if ($LabContext) {
     function argocd-pass {
         $encoded = kubectl --context $LabContext -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}'
         [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
     }
 
-    # Interface do Argo CD em https://localhost:8080; Ctrl+C encerra o port-forward
+    # Argo CD UI at https://localhost:8080; Ctrl+C stops the port-forward
     function argocd-ui {
         "https://localhost:8080 · usuário admin · senha: $(argocd-pass)"
         Start-Process 'https://localhost:8080'
         kubectl --context $LabContext -n argocd port-forward svc/argocd-server 8080:443
     }
 
-    # Login do CLI do Argo CD direto pela API do cluster, sem port-forward
+    # Argo CD CLI login straight through the cluster API, no port-forward
     function argocd-login {
         argocd login --core
         kubectl config set-context --current --namespace argocd
     }
 
-    # Dashboard do Argo Rollouts em http://localhost:3100
+    # Argo Rollouts dashboard at http://localhost:3100
     function rollouts-ui {
         Start-Process 'http://localhost:3100'
         kubectl argo rollouts dashboard
     }
 
-    # Grafana (add-on kube-prometheus-stack) em http://localhost:3000 · admin/admin
+    # Grafana (kube-prometheus-stack add-on) at http://localhost:3000 - admin/admin
     function grafana-ui {
         Start-Process 'http://localhost:3000'
         kubectl --context $LabContext -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
@@ -668,15 +668,15 @@ if ($LabContext) {
 }
 #endregion
 
-#region Cloud e IaC ---------------------------------------------------------------------
+#region Cloud and IaC -------------------------------------------------------------------
 Set-Alias tf terraform
 
 function azlogin { az login --use-device-code @args }
 
-# Gera o ssh config para as VMs do Azure (az ssh)
+# Generates the ssh config for Azure VMs (az ssh)
 function gen-cert { az ssh config --ip * --file (Join-Path $env:TEMP 'az-ssh.conf') @args }
 
-# Troca de perfil/assinatura/projeto com fzf
+# Switch profile/subscription/project with fzf
 function awsp {
     $selected = aws configure list-profiles | fzf --prompt 'AWS profile> '
     if ($selected) { $env:AWS_PROFILE = $selected; "AWS_PROFILE=$selected" }
@@ -694,11 +694,11 @@ function gcpp {
 }
 #endregion
 
-#region Scripts pessoais ----------------------------------------------------------------
-# Pasta local, fora do OneDrive: %USERPROFILE%\.config\powershell\scripts
+#region Personal scripts ----------------------------------------------------------------
+# Local folder, outside OneDrive: %USERPROFILE%\.config\powershell\scripts
 $SreScripts = Join-Path $PSScriptRoot 'scripts'
 
-# Mantém a sessão ativa (F15 a cada 4 min). Roda até Ctrl+C.
+# Keeps the session awake (F15 every 4 min). Runs until Ctrl+C.
 function aleonx {
     $script = Join-Path $SreScripts 'aleonx.ps1'
     if (-not (Test-Path -LiteralPath $script)) { Write-Warning "Script não encontrado: $script"; return }
@@ -707,12 +707,12 @@ function aleonx {
 #endregion
 
 #region cursaves ------------------------------------------------------------------------
-# Sincroniza o workspace SRE (#1) com o GitHub
+# Syncs the SRE workspace (#1) with GitHub
 function csync { cursaves sync -w 1 @args }
 Set-Alias css csync
 #endregion
 
-#region Customizações locais ------------------------------------------------------------
+#region Local customizations ------------------------------------------------------------
 $LocalProfile = Join-Path $ProfileDir 'profile.local.ps1'
 if (Test-Path $LocalProfile) { . $LocalProfile }
 #endregion

@@ -1,72 +1,72 @@
 ﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Configura uma workstation Windows 11 (Pro ou Home) para SRE/DevOps com foco no PowerShell 7.
+    Sets up a Windows 11 workstation (Pro or Home) for SRE/DevOps, centered on PowerShell 7.
 
 .DESCRIPTION
-    Script único: pode ser iniciado no Windows PowerShell 5.1 que já vem com o Windows.
-    Nesse caso ele instala o PowerShell 7 x64 e se reabre nele para continuar o setup.
+    Single script: it can be started from the Windows PowerShell 5.1 that ships with Windows.
+    In that case it installs PowerShell 7 x64 and relaunches itself there to continue.
 
-    No início ele pergunta a versão do Windows (ou use -Versao):
-    - Home: PowerShell 7 customizado com as ferramentas de DevOps no Windows, mais o
-            Docker Desktop e o k3d para rodar o k3s. Sem Ubuntu: o WSL2 só serve de
-            motor ao Docker Desktop, que só ocupa memória enquanto está aberto.
-    - Pro:  tudo da Home, mais Hyper-V, Área Restrita do Windows, Vagrant, Packer e
-            Multipass. Só nas edições com Hyper-V (Pro, Enterprise, Education).
+    At startup it asks which Windows version to set up (or use -Versao):
+    - Home: customized PowerShell 7 with the DevOps tools on Windows, plus Docker
+            Desktop and k3d to run k3s. No Ubuntu: WSL2 is only the engine behind
+            Docker Desktop, which only uses memory while it is open.
+    - Pro:  everything in Home, plus Hyper-V, Windows Sandbox, Vagrant, Packer and
+            Multipass. Only on editions with Hyper-V (Pro, Enterprise, Education).
 
-    Nenhuma das versões instala o Ubuntu.
+    Neither version installs Ubuntu.
 
-    .wslconfig nas duas versões: rede espelhada, DNS e proxy do Windows, memória e
-    processadores limitados, recuperação de memória e disco esparso. A memória padrão é
-    6 GB (sem passar da metade da RAM); no ROG Ally / Ally X / Xbox Ally, 25% da RAM
-    (mínimo 4 GB), porque ela é dividida com a GPU.
+    .wslconfig on both versions: mirrored networking, Windows DNS and proxy, memory and
+    processor limits, memory reclaim and sparse disk. Default memory is 6 GB (never
+    more than half the RAM); on the ROG Ally / Ally X / Xbox Ally, 25% of the RAM
+    (minimum 4 GB), because it is shared with the GPU.
 
-    Nas duas versões:
-    - CLIs de Kubernetes, Terraform, Headlamp, kubeseal e Argo Rollouts no Windows
-    - CLIs de nuvem (Azure, AWS, GCP), módulo Az e Telnet
-    - Apps de trabalho, jogos e de uso pessoal (VS Code, Steam, Sublime...)
-    - Ajustes de desenvolvedor, Nerd Font, módulos do PowerShell e Windows Terminal
-    - Perfil do PowerShell 7 (prompt nativo) que fica na mesma pasta deste script; é
-      copiado para %USERPROFILE%\.config\powershell (pasta local, fora do OneDrive)
+    On both versions:
+    - Kubernetes CLIs, Terraform, Headlamp, kubeseal and Argo Rollouts on Windows
+    - Cloud CLIs (Azure, AWS, GCP), the Az module and Telnet
+    - Work, gaming and personal apps (VS Code, Steam, Sublime...)
+    - Developer settings, Nerd Font, PowerShell modules and Windows Terminal
+    - PowerShell 7 profile (native prompt) that sits next to this script; it is copied
+      to %USERPROFILE%\.config\powershell (local folder, outside OneDrive)
 
-    Docker: vem do Docker Desktop nas duas versões. O Docker Desktop é gratuito para uso
-    pessoal e empresas pequenas; em empresas grandes exige assinatura.
+    Docker: comes from Docker Desktop on both versions. Docker Desktop is free for
+    personal use and small companies; large companies need a subscription.
 
 .PARAMETER Versao
-    Perguntar (padrão): mostra a escolha no início, sugerindo a edição detectada.
-    Home ou Pro: escolhe sem perguntar. Sem terminal interativo, vale a edição detectada.
+    Perguntar (default): shows the choice at startup, suggesting the detected edition.
+    Home or Pro: picks without asking. Without an interactive terminal, the detected edition is used.
 
 
 .PARAMETER WslMemoryGB
-    Limite de memória do WSL em GB. Sem ele: 6 GB, sem passar da metade da RAM; no
-    ROG Ally, 25% da RAM (mínimo 4 GB).
+    WSL memory limit in GB. Without it: 6 GB, never more than half the RAM; on the
+    ROG Ally, 25% of the RAM (minimum 4 GB).
 
 .PARAMETER UpgradeAll
-    Ao final, também atualiza todos os aplicativos com `winget upgrade --all`.
+    At the end, also updates every application with `winget upgrade --all`.
 
 .PARAMETER SkipWindowsFeatures
-    Não habilita recursos do Windows.
+    Does not enable Windows features.
 
 .PARAMETER SkipProfile
-    Não copia o perfil para a pasta do PowerShell.
+    Does not copy the profile to the PowerShell folder.
 
 .PARAMETER RemoveX86
-    Remove o PowerShell 7 de 32 bits, se existir. Ele costuma ser aberto por atalhos
-    antigos no lugar do de 64 bits.
+    Removes the 32-bit PowerShell 7, if present. Old shortcuts tend to open it
+    instead of the 64-bit one.
 
 .PARAMETER SkipApps
-    Não instala o grupo "Pessoal / Opcional".
+    Does not install the "Pessoal / Opcional" group.
 
 .EXAMPLE
-    # Num Windows PowerShell (ou PowerShell 7) aberto como Administrador, na pasta do script:
+    # In a Windows PowerShell (or PowerShell 7) opened as Administrator, in the script folder:
     powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1
     powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -Versao Pro
     powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -Versao Home -SkipApps
 
 .NOTES
-    O perfil (Microsoft.PowerShell_profile.ps1) precisa estar na mesma pasta.
+    The profile (Microsoft.PowerShell_profile.ps1) must be in the same folder.
 
-    Script desenvolvido por Aleon Chagas
+    Script developed by Aleon Chagas
 #>
 [CmdletBinding()]
 param(
@@ -85,15 +85,15 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 # =============================================================================
-#  Fase 1 (Windows PowerShell 5.1): instala o PowerShell 7 e reabre este script nele
-#  Tudo neste bloco precisa ser compatível com o 5.1.
+#  Phase 1 (Windows PowerShell 5.1): installs PowerShell 7 and relaunches this script in it
+#  Everything in this block must be compatible with 5.1.
 # =============================================================================
 
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    # Sem isso o console do Windows PowerShell 5.1 troca os acentos das mensagens
+    # Without this the Windows PowerShell 5.1 console garbles accented characters in messages
     try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
-    # Num Windows PowerShell de 32 bits, $env:ProgramFiles aponta para "Program Files (x86)"
+    # In a 32-bit Windows PowerShell, $env:ProgramFiles points to "Program Files (x86)"
     $programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles }
     $pwsh = Join-Path $programFiles 'PowerShell\7\pwsh.exe'
 
@@ -104,16 +104,16 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
             --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Null
         $wingetCode = '0x{0:X8}' -f $LASTEXITCODE
     }
-    # O winget pode dizer "já instalado" (0x8A150061) por causa do PowerShell da Microsoft
-    # Store, que não fica em Program Files; nesse caso, ou com erro, instala o MSI oficial.
+    # winget may report "already installed" (0x8A150061) because of the Microsoft Store
+    # PowerShell, which is not in Program Files; in that case, or on error, install the official MSI.
     if (-not (Test-Path $pwsh)) {
         $reason = if ($wingetCode) { "winget retornou $wingetCode" } else { 'winget indisponível' }
         Write-Host "  $reason e o pwsh.exe não está em Program Files; baixando o MSI oficial do GitHub..." -ForegroundColor Yellow
         try {
-            # A "última release" pode não ter MSI: do PowerShell 7.7 em diante só sai MSIX, e o
-            # MSI continua apenas na linha 7.6 (LTS). Por isso procura a release estável mais
-            # recente que ainda tenha o MSI x64. Páginas pequenas: o Windows PowerShell 5.1
-            # não interpreta respostas JSON muito grandes.
+            # The "latest release" may have no MSI: from PowerShell 7.7 on only MSIX is shipped, and
+            # the MSI remains only in the 7.6 (LTS) line. So look for the newest stable release
+            # that still has the x64 MSI. Small pages: Windows PowerShell 5.1 cannot parse
+            # very large JSON responses.
             $asset = $null
             $seen = @()
             foreach ($page in 1..8) {
@@ -130,15 +130,15 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
             if (-not $asset) { throw "MSI x64 não encontrado nas releases estáveis do PowerShell (vistas: $($seen -join ', '))." }
             $msi = Join-Path $env:TEMP $asset.name
             Write-Host ("  Baixando {0} ({1:N0} MB)..." -f $asset.name, ($asset.size / 1MB))
-            # O WebClient é bem mais rápido que o Invoke-WebRequest no Windows PowerShell 5.1
+            # WebClient is much faster than Invoke-WebRequest on Windows PowerShell 5.1
             (New-Object Net.WebClient).DownloadFile($asset.browser_download_url, $msi)
             Write-Host '  Instalando o MSI (leva 1 a 2 minutos, sem janela)...'
             $msiArgs = "/i `"$msi`" /qn ADD_PATH=1 ENABLE_PSREMOTING=0 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1"
             $process = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
-            # 1618: outra instalação em andamento (ex.: Windows Update)
+            # 1618: another installation in progress (e.g. Windows Update)
             if ($process.ExitCode -eq 1618) { throw 'outra instalação está em andamento (Windows Update?); espere ela terminar e rode de novo' }
             Remove-Item $msi -Force -ErrorAction SilentlyContinue
-            # 3010: instalado, requer reinicialização
+            # 3010: installed, reboot required
             if ($process.ExitCode -notin 0, 3010) { throw "msiexec retornou $($process.ExitCode)" }
         }
         catch {
@@ -147,8 +147,8 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         }
     }
     if (-not (Test-Path $pwsh)) {
-        # Último recurso: outro PowerShell 7 do PATH (ex.: o da Microsoft Store), de
-        # preferência o de 64 bits
+        # Last resort: another PowerShell 7 on the PATH (e.g. the Microsoft Store one),
+        # preferably the 64-bit one
         $found = @(Get-Command pwsh.exe -All -ErrorAction SilentlyContinue) |
             Sort-Object { $_.Source -match 'x86' } | Select-Object -First 1
         if (-not $found) { throw 'O PowerShell 7 não foi instalado. Veja as mensagens acima.' }
@@ -169,7 +169,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         }
     }
 
-    # Arquivos baixados ou vindos de compartilhamento ficam bloqueados para RemoteSigned
+    # Downloaded files or files from a share are blocked under RemoteSigned
     Get-ChildItem -Path $PSScriptRoot -File | Unblock-File
 
     Write-Host "`n==> Continuando o setup no PowerShell 7" -ForegroundColor Cyan
@@ -187,7 +187,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 }
 
 # =============================================================================
-#  Fase 2 (PowerShell 7): setup
+#  Phase 2 (PowerShell 7): setup
 # =============================================================================
 
 if ($PSVersionTable.PSVersion.Major -eq 7 -and $PSVersionTable.PSVersion.Minor -lt 4) {
@@ -196,26 +196,26 @@ if ($PSVersionTable.PSVersion.Major -eq 7 -and $PSVersionTable.PSVersion.Minor -
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
 
 # =============================================================================
-#  Máquina
+#  Machine
 # =============================================================================
 
 $OsInfo = Get-CimInstance Win32_OperatingSystem
 $ComputerInfo = Get-CimInstance Win32_ComputerSystem
 # ROG Ally RC71L, Ally X RC72LA, Xbox Ally RC73...
 $IsRogAlly = $ComputerInfo.Model -match 'Ally|RC7\d'
-# O Home não lista o Hyper-V entre os recursos opcionais: só a versão Home
+# Windows Home does not list Hyper-V among the optional features: Home version only
 $HyperVAvailable = [bool](Get-CimInstance Win32_OptionalFeature -Filter "Name='Microsoft-Hyper-V-All'")
-# Definida no início da execução (pergunta ou -Versao)
+# Set at the start of the run (prompt or -Versao)
 $Edition = 'Home'
 
 # =============================================================================
-#  Configuração
+#  Configuration
 # =============================================================================
 
-# Versao: o recurso só é habilitado nessa versão.
-# Recursos que a edição não tem são pulados.
+# Versao: the feature is only enabled on that version.
+# Features the edition does not have are skipped.
 $WindowsFeatures = @(
-    # WSL nas duas versões: é só o motor do Docker Desktop (sem Ubuntu)
+    # WSL on both versions: it is only the engine behind Docker Desktop (no Ubuntu)
     @{ Name = 'Microsoft-Windows-Subsystem-Linux'; Label = 'Subsistema do Windows para Linux' }
     @{ Name = 'VirtualMachinePlatform'; Label = 'Plataforma de Máquina Virtual' }
     @{ Name = 'Microsoft-Hyper-V-All'; Label = 'Hyper-V (plataforma, Gerenciador e módulo)'; Versao = 'Pro' }
@@ -223,13 +223,13 @@ $WindowsFeatures = @(
     @{ Name = 'TelnetClient'; Label = 'Cliente Telnet' }
 )
 
-# Grupo "Administradores do Hyper-V" pelo SID, porque o nome muda com o idioma
+# "Hyper-V Administrators" group by SID, because its name changes with the language
 $HyperVAdminsSid = 'S-1-5-32-578'
 
-# REVISE ANTES DE RODAR: todos os apps abaixo estão ativos. Para não instalar um app,
-# comente a linha com # no início; para instalar de novo, tire o #.
-# Ao lado de cada Id está o nome do pacote no Chocolatey. "Id@versão" instala uma versão
-# fixa e faz um winget pin para o upgrade --all não trocá-la.
+# REVIEW BEFORE RUNNING: every app below is active. To skip an app, comment its
+# line with a leading #; to install it again, remove the #.
+# Next to each Id is the Chocolatey package name. "Id@version" installs a fixed
+# version and runs winget pin so that upgrade --all does not replace it.
 $WingetPackages = [ordered]@{
     'Trabalho / DevOps / SRE' = @(
        # 'Anysphere.Cursor'                       # cursoride
@@ -249,9 +249,9 @@ $WingetPackages = [ordered]@{
         'Derailed.k9s'                           # k9s
         'Helm.Helm'                              # kubernetes-helm
         #'Postman.Postman'                        # postman
-        #'Microsoft.Azure.Kubelogin'              # login nos clusters AKS
+        #'Microsoft.Azure.Kubelogin'              # login to AKS clusters
         #'Google.CloudSDK'                        # gcloud
-        # azurepowershell: é o módulo Az, na lista $PSModules
+        # azurepowershell: it is the Az module, in the $PSModules list
     )
     'Pessoal / Opcional' = @(
         #'Discord.Discord'                        # discord
@@ -263,7 +263,7 @@ $WingetPackages = [ordered]@{
         #'Mozilla.Firefox'                        # firefox
         #'Devolutions.RemoteDesktopManager'       # rdm
         #'Microsoft.PowerToys'                    # powertoys
-        'RiotGames.Valorant.BR'                  # valorant (servidor BR; troque o sufixo se precisar)
+        'RiotGames.Valorant.BR'                  # valorant (BR server; change the suffix if needed)
         'Google.GoogleDrive'                     # googledrive
         #'OBSProject.OBSStudio'                   # obs-studio
         'Notion.Notion'                          # notion
@@ -272,11 +272,11 @@ $WingetPackages = [ordered]@{
         'SublimeHQ.SublimeText.4'                # sublimetext4
         'JAMSoftware.TreeSize.Free'              # treesizefree
         'Roblox.Roblox'                          # roblox
-        'Flameshot.Flameshot@12.1.0'             # versão estável
-        # nvidia-display-driver e nvidia-app: não estão no winget
-        # docker-desktop: vem no grupo Docker Desktop
+        'Flameshot.Flameshot@12.1.0'             # stable version
+        # nvidia-display-driver and nvidia-app: not available on winget
+        # docker-desktop: comes in the Docker Desktop group
     )
-    # Ferramentas de terminal e Kubernetes usadas pelo perfil do PowerShell
+    # Terminal and Kubernetes tools used by the PowerShell profile
     'Terminal e shell' = @(
         'Microsoft.PowerShell'
         'Microsoft.WindowsTerminal'
@@ -291,71 +291,71 @@ $WingetPackages = [ordered]@{
         'dandavison.delta'
         'jqlang.jq'
         'MikeFarah.yq'
-        'JanDeDobbeleer.OhMyPosh'                # só instala a Nerd Font; o prompt é nativo
+        'JanDeDobbeleer.OhMyPosh'                # only installs the Nerd Font; the prompt is native
     )
     'Kubernetes' = @(
         'Kubernetes.kubectl'
         'ahmetb.kubectx'
         'ahmetb.kubens'
         'stern.stern'
-        'Headlamp.Headlamp'                      # interface gráfica; usa o mesmo kubeconfig
+        'Headlamp.Headlamp'                      # GUI; uses the same kubeconfig
     )
-    # Nas duas versões: o Docker e o k3s (via k3d) vêm do Docker Desktop
+    # On both versions: Docker and k3s (via k3d) come from Docker Desktop
     'Docker Desktop' = @(
         'Docker.DockerDesktop'
-        'k3d.k3d'                                # k3s em contêineres do Docker
+        'k3d.k3d'                                # k3s in Docker containers
     )
-    # Só na versão Pro: usam o Hyper-V
+    # Pro version only: they use Hyper-V
     'Virtualização' = @(
         'Hashicorp.Vagrant'
         'Hashicorp.Packer'
-        'Canonical.Multipass'                    # VMs Ubuntu com um comando
+        'Canonical.Multipass'                    # Ubuntu VMs with one command
     )
 }
-# Pulados com -SkipApps
+# Skipped with -SkipApps
 $AppGroups = 'Pessoal / Opcional'
-# Grupos que só entram numa das versões; os outros entram nas duas
+# Groups that only apply to one version; the others apply to both
 $EditionGroups = @{
     'Virtualização'  = 'Pro'
 }
 
-# CLIs do lab que não estão no winget: baixadas do GitHub Releases. Asset é uma
-# regex do nome do arquivo; Exe é o binário dentro do .tar.gz.
-# Apps que vêm com o Windows e são removidos (do usuário e da imagem, para não voltarem
-# em contas novas). Nomes de pacote Appx; aceitam curinga. Para manter um, comente a linha.
-# Ficam: Loja, Calculadora, Fotos, Bloco de Notas, Paint, Ferramenta de Captura, Câmera,
-# Terminal, Edge e os apps do Xbox (usados pelos jogos).
-# Atenção: MSTeams é o Teams novo (pessoal e corporativo) e OutlookForWindows é o novo
-# Outlook; num PC em que você usa um deles no trabalho, comente a linha.
-# O Microsoft 365 (hub do Office) vem comentado: não é removido.
+# Lab CLIs that are not on winget: downloaded from GitHub Releases. Asset is a
+# regex for the file name; Exe is the binary inside the .tar.gz.
+# Apps that ship with Windows and are removed (from the user and from the image, so they
+# do not come back on new accounts). Appx package names; wildcards allowed. To keep one, comment its line.
+# Kept: Store, Calculator, Photos, Notepad, Paint, Snipping Tool, Camera,
+# Terminal, Edge and the Xbox apps (used by games).
+# Note: MSTeams is the new Teams (personal and work) and OutlookForWindows is the new
+# Outlook; on a PC where you use either one for work, comment its line.
+# Microsoft 365 (the Office hub) is commented out: it is not removed.
 $BloatwareApps = @(
     '7EE7776C.LinkedInforWindows'           # LinkedIn
-    'Microsoft.MicrosoftSolitaireCollection' # Paciência
-    'Microsoft.BingNews'                     # Notícias (Microsoft Start)
-    'Microsoft.BingWeather'                  # Clima
-    'Microsoft.BingSearch'                   # Pesquisa do Bing
-    'Microsoft.GetHelp'                      # Obter Ajuda
-    'Microsoft.Getstarted'                   # Dicas
+    'Microsoft.MicrosoftSolitaireCollection' # Solitaire
+    'Microsoft.BingNews'                     # News (Microsoft Start)
+    'Microsoft.BingWeather'                  # Weather
+    'Microsoft.BingSearch'                   # Bing Search
+    'Microsoft.GetHelp'                      # Get Help
+    'Microsoft.Getstarted'                   # Tips
     # 'Microsoft.MicrosoftOfficeHub'         # Microsoft 365 (Office)
     'Microsoft.People'
-    'Microsoft.WindowsFeedbackHub'           # Hub de Comentários
-    'Microsoft.WindowsMaps'                  # Mapas
-    'Microsoft.WindowsAlarms'                # Relógio
-    'Microsoft.WindowsSoundRecorder'         # Gravador de Som
-    'Microsoft.ZuneVideo'                    # Filmes e TV
+    'Microsoft.WindowsFeedbackHub'           # Feedback Hub
+    'Microsoft.WindowsMaps'                  # Maps
+    'Microsoft.WindowsAlarms'                # Clock
+    'Microsoft.WindowsSoundRecorder'         # Sound Recorder
+    'Microsoft.ZuneVideo'                    # Movies & TV
     'Microsoft.ZuneMusic'                    # Media Player
     'Microsoft.Todos'                        # To Do
     'Microsoft.Whiteboard'                   # Whiteboard
     'Microsoft.PowerAutomateDesktop'
     'Microsoft.MicrosoftJournal'
-    'Microsoft.OutlookForWindows'            # novo Outlook
-    'Microsoft.YourPhone'                    # Vincular ao Celular
+    'Microsoft.OutlookForWindows'            # new Outlook
+    'Microsoft.YourPhone'                    # Phone Link
     'Microsoft.549981C3F5F10'                # Cortana
     'Microsoft.Windows.DevHome'
-    'MicrosoftCorporationII.QuickAssist'     # Assistência Rápida
+    'MicrosoftCorporationII.QuickAssist'     # Quick Assist
     'MicrosoftCorporationII.MicrosoftFamily' # Family Safety
-    'MicrosoftTeams'                         # Teams pessoal (antigo)
-    'MSTeams'                                # Teams novo: pessoal e corporativo
+    'MicrosoftTeams'                         # personal Teams (old)
+    'MSTeams'                                # new Teams: personal and work
     'Clipchamp.Clipchamp'
     'SpotifyAB.SpotifyMusic'
     'Disney.37853FC22B2CE'                   # Disney+
@@ -366,7 +366,7 @@ $BloatwareApps = @(
     '5319275A.WhatsAppDesktop'
     '*CandyCrush*'
     # 'Microsoft.Copilot'
-    'Microsoft.MicrosoftStickyNotes'         # Notas Autoadesivas
+    'Microsoft.MicrosoftStickyNotes'         # Sticky Notes
 )
 
 $GitHubTools = @(
@@ -383,11 +383,11 @@ $PSModules = @(
     @{ Name = 'Az'; Note = 'é grande, pode levar alguns minutos' }     # azurepowershell
 )
 
-# No ROG Ally a RAM é compartilhada com a GPU integrada. Sem limite, o WSL pode usar
-# até 50% dela e disputar memória com os jogos.
-$WslMemoryShare = 0.25   # fração da RAM para o WSL
+# On the ROG Ally the RAM is shared with the integrated GPU. With no limit, WSL can use
+# up to 50% of it and compete with games for memory.
+$WslMemoryShare = 0.25   # fraction of the RAM for WSL
 $WslMemoryMinGB = 4
-$WslMemoryDefaultGB = 6      # nos outros PCs, sem passar da metade da RAM
+$WslMemoryDefaultGB = 6      # on other PCs, never more than half the RAM
 $WslProcessorsDefault = 6
 
 $GitGlobalConfig = [ordered]@{
@@ -403,19 +403,19 @@ $GitGlobalConfig = [ordered]@{
 }
 
 $FontFace          = 'MesloLGM Nerd Font'
-$PwshProfileGuid   = '{574e775e-4f2a-5b96-ac1e-a2962a402336}'   # perfil PowerShell 7 do Windows Terminal
+$PwshProfileGuid   = '{574e775e-4f2a-5b96-ac1e-a2962a402336}'   # Windows Terminal PowerShell 7 profile
 $ProfileFiles      = @('Microsoft.PowerShell_profile.ps1')
-# Pasta local do perfil e dos scripts pessoais. A pasta padrão do PowerShell fica em
-# Documentos, que o OneDrive costuma redirecionar; esta fica só no disco local.
+# Local folder for the profile and personal scripts. The default PowerShell folder is in
+# Documents, which OneDrive usually redirects; this one stays on the local disk only.
 $LocalProfileDir   = Join-Path $env:USERPROFILE '.config\powershell'
 
-# Códigos do winget que significam "já está instalado / nada a atualizar"
+# winget codes that mean "already installed / nothing to update"
 $WingetNoop = @(
     0x8A150061   # APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
     0x8A15002B   # APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE
 )
-# Tempo máximo de cada instalação do winget. Alguns instaladores (launchers de jogos)
-# abrem o app e não terminam; passado o limite, o instalador é encerrado e o setup segue.
+# Maximum time for each winget install. Some installers (game launchers) open the app
+# and never finish; past the limit, the installer is killed and the setup moves on.
 $WingetInstallTimeoutMinutes = 20
 $WingetTimedOut = -1
 
@@ -425,7 +425,7 @@ $null   = New-Item -ItemType Directory -Path $LogDir -Force
 $WingetLog = Join-Path $LogDir 'winget.log'
 
 # =============================================================================
-#  Interface
+#  UI
 # =============================================================================
 
 $Ui = @{
@@ -470,7 +470,7 @@ function Write-Item {
         [Parameter(Mandatory)][string]$Text,
         [string]$Detail
     )
-    # Símbolos sem versão emoji: têm largura de 1 coluna também no console clássico
+    # Symbols with no emoji variant: they are 1 column wide in the classic console too
     $icon, $color = switch ($Kind) {
         'Ok'   { '✓', $Ui.Ok }
         'Skip' { '•', $Ui.Dim }
@@ -556,7 +556,7 @@ function Write-Summary([TimeSpan]$Elapsed) {
 }
 
 # =============================================================================
-#  Utilitários
+#  Utilities
 # =============================================================================
 
 function Test-Cmd([string]$Name) {
@@ -589,12 +589,12 @@ function Invoke-Winget {
         $outFile = Join-Path $LogDir 'winget-current.out'
         $process = Start-Process winget.exe -ArgumentList $Arguments -NoNewWindow -PassThru `
             -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err"
-        $null = $process.Handle   # sem isso o ExitCode pode vir vazio
+        $null = $process.Handle   # without this ExitCode may come back empty
         if ($process.WaitForExit($TimeoutMinutes * 60000)) {
             $exitCode = $process.ExitCode
         }
         else {
-            # Encerra o winget e o instalador que ele abriu
+            # Kills winget and the installer it started
             try { $process.Kill($true) } catch { }
             $exitCode = $WingetTimedOut
         }
@@ -642,7 +642,7 @@ function Set-RegistryDword {
 }
 
 # =============================================================================
-#  Etapas
+#  Steps
 # =============================================================================
 
 function Step-Prerequisites {
@@ -679,8 +679,8 @@ function Step-Prerequisites {
         }
     }
 
-    # Num usuário que nunca usou o PSResourceGet o PSResourceRepository.xml ainda não
-    # existe e o Set-PSResourceRepository falha; o Get-PSResourceRepository o cria.
+    # For a user who has never used PSResourceGet, PSResourceRepository.xml does not exist
+    # yet and Set-PSResourceRepository fails; Get-PSResourceRepository creates it.
     try {
         $null = Get-PSResourceRepository -Name PSGallery
         Set-PSResourceRepository -Name PSGallery -Trusted
@@ -716,7 +716,7 @@ function Step-WindowsFeatures {
 }
 
 function Step-RemoveBloatware {
-    # O módulo Appx não funciona direito no PowerShell 7: a remoção roda no 5.1
+    # The Appx module does not work properly on PowerShell 7: the removal runs on 5.1
     $script = {
         param($Patterns)
         $provisioned = Get-AppxProvisionedPackage -Online
@@ -746,14 +746,14 @@ function Step-RemoveBloatware {
     }
     if (-not ($results | Where-Object { "$_" -like 'Ok|*' })) { Write-Item Skip 'Apps pré-instalados' 'nada a remover' }
 
-    # Impede que o Windows reinstale apps sugeridos (LinkedIn, jogos, Spotify...)
+    # Stops Windows from reinstalling suggested apps (LinkedIn, games, Spotify...)
     $cdm = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
     Set-RegistryDword -Label 'Sem instalação automática de apps sugeridos' -Value 0 -Name 'SilentInstalledAppsEnabled' -Path $cdm
     Set-RegistryDword -Value 0 -Name 'PreInstalledAppsEnabled' -Path $cdm
     Set-RegistryDword -Value 0 -Name 'OemPreInstalledAppsEnabled' -Path $cdm
     Set-RegistryDword -Value 1 -Name 'DisableWindowsConsumerFeatures' -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
 
-    # Sem pesquisa web do Bing no Iniciar e na busca da barra de tarefas
+    # No Bing web search in Start and in the taskbar search
     Set-RegistryDword -Label 'Sem pesquisa web do Bing no Iniciar' -Value 1 -Name 'DisableSearchBoxSuggestions' `
         -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
     Set-RegistryDword -Value 0 -Name 'BingSearchEnabled' -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search'
@@ -790,21 +790,21 @@ function Step-DeveloperSettings {
     Set-RegistryDword -Label 'Modo de desenvolvedor (symlinks sem admin)' -Value 1 -Name 'AllowDevelopmentWithoutDevLicense' `
         -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
 
-    # Painel de detalhes do Explorer (Alt+Shift+P): miniatura grande da imagem e propriedades
+    # Explorer details pane (Alt+Shift+P): large image thumbnail and properties
     Set-RegistryDword -Label 'Painel de detalhes do Explorer' -Type Binary -Value ([byte[]](1, 0, 0, 0, 2, 0, 0, 0)) -Name 'DetailsContainer' `
         -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Modules\GlobalSettings\DetailsContainer'
-    # Miniaturas no lugar de ícones, para a pré-visualização aparecer
+    # Thumbnails instead of icons, so the preview shows up
     Set-RegistryDword -Value 0 -Name 'IconsOnly' -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
 
-    # sudo do Windows (Configurações > Sistema > Para desenvolvedores), modo inline.
-    # Gravado no registro: o "sudo config" não roda enquanto o sudo está desativado.
+    # sudo for Windows (Settings > System > For developers), inline mode.
+    # Written to the registry: "sudo config" does not run while sudo is disabled.
     $build = [int](Get-CimInstance Win32_OperatingSystem).BuildNumber
     if ($build -lt 26100) {
         Write-Item Skip 'sudo para Windows' 'requer Windows 11 24H2'
     }
     else {
         try {
-            # 1 = nova janela, 2 = entrada desativada, 3 = inline
+            # 1 = new window, 2 = input disabled, 3 = inline
             Set-RegistryDword -Label 'sudo para Windows (inline)' -Value 3 -Name 'Enabled' `
                 -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Sudo'
         }
@@ -823,13 +823,13 @@ function Step-DeveloperSettings {
     Write-Item Ok 'Configuração global do git' $detail
 }
 
-# Versão Home: Windows com o mínimo de efeitos visuais, para ficar leve e rápido.
-# Mantém só a suavização de fontes e as miniaturas de imagens.
+# Home version: Windows with minimal visual effects, to keep it light and fast.
+# Keeps only font smoothing and image thumbnails.
 function Step-LightAppearance {
     $desktop  = 'HKCU:\Control Panel\Desktop'
     $advanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
 
-    # "Ajustar para melhor desempenho", personalizado: sem animações, sombras e esmaecimentos
+    # "Adjust for best performance", customized: no animations, shadows or fades
     Set-RegistryDword -Value 3 -Name 'VisualFXSetting' -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
     Set-RegistryDword -Label 'Efeitos visuais: melhor desempenho' -Type Binary -Name 'UserPreferencesMask' `
         -Value ([byte[]](0x90, 0x12, 0x03, 0x80, 0x10, 0x00, 0x00, 0x00)) -Path $desktop
@@ -845,8 +845,8 @@ function Step-LightAppearance {
         -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
     Set-RegistryDword -Label 'Sem atraso nos apps de inicialização' -Value 0 -Name 'StartupDelayInMSec' `
         -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize'
-    # Widgets ligados: o botão da barra de tarefas mostra o tempo. Remove a política
-    # que os desligava (gravada por versões anteriores deste setup).
+    # Widgets on: the taskbar button shows the weather. Removes the policy
+    # that turned them off (written by earlier versions of this setup).
     $dsh = 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh'
     if ((Get-ItemProperty $dsh -Name AllowNewsAndInterests -ErrorAction Ignore).AllowNewsAndInterests -eq 0) {
         Remove-ItemProperty $dsh -Name AllowNewsAndInterests
@@ -882,8 +882,8 @@ function Step-NerdFont {
 }
 
 function Step-PSModules {
-    # Escopo AllUsers: os módulos vão para Arquivos de Programas. O escopo CurrentUser
-    # grava em Documentos\PowerShell\Modules, que o OneDrive costuma sincronizar.
+    # AllUsers scope: modules go to Program Files. The CurrentUser scope writes to
+    # Documents\PowerShell\Modules, which OneDrive usually syncs.
     foreach ($module in $PSModules) {
         $old = Get-InstalledPSResource -Name $module.Name -Scope CurrentUser -ErrorAction Ignore | Select-Object -First 1
         if ($old) {
@@ -951,7 +951,7 @@ function Step-WindowsTerminal {
 function Step-Profile {
     $profileDir = $LocalProfileDir
     $null = New-Item -ItemType Directory -Path $profileDir -Force
-    # Scripts pessoais usados pelo perfil (ex.: aleonx.ps1)
+    # Personal scripts used by the profile (e.g. aleonx.ps1)
     $null = New-Item -ItemType Directory -Path (Join-Path $profileDir 'scripts') -Force
 
     foreach ($file in $ProfileFiles) {
@@ -971,14 +971,14 @@ function Step-Profile {
             $detail = "atualizado; backup em $(Split-Path -Leaf $target).bak-$Stamp"
         }
         Copy-Item $source $target -Force
-        # A cópia leva a marca "baixado da internet"; com RemoteSigned o perfil não carregaria
+        # The copy carries the "downloaded from the internet" mark; under RemoteSigned the profile would not load
         Unblock-File -Path $target
         Write-Item Ok $file $detail
     }
 
-    # Perfil implantado por versões anteriores do setup em Documentos (OneDrive): o
-    # profile.local.ps1 é copiado para a pasta local e o perfil antigo é renomeado,
-    # para não carregar duas vezes.
+    # Profile deployed by earlier versions of the setup in Documents (OneDrive): the
+    # profile.local.ps1 is copied to the local folder and the old profile is renamed,
+    # so it does not load twice.
     $oldProfile = $PROFILE.CurrentUserCurrentHost
     $oldDir = Split-Path -Parent $oldProfile
     $localProfile = Join-Path $profileDir 'profile.local.ps1'
@@ -989,7 +989,7 @@ function Step-Profile {
         Write-Item Ok 'profile.local.ps1' "copiado de $oldDir"
     }
     if ((Test-Path $oldProfile) -and "$(Get-Content $oldProfile -Raw)".Contains($marker)) {
-        # É só o carregador (PowerShell instalado por MSIX): fica onde está
+        # It is just the loader (PowerShell installed via MSIX): leave it in place
     }
     elseif (Test-Path $oldProfile) {
         if ((Get-Content $oldProfile -TotalCount 5) -match 'setup-windows\.ps1') {
@@ -1008,9 +1008,9 @@ function Step-Profile {
         Write-Item Ok 'profile.local.ps1' 'criado para customizações pessoais'
     }
 
-    # O PowerShell só procura o perfil do usuário em Documentos. O perfil "todos os
-    # usuários" fica na pasta do PowerShell (Arquivos de Programas) e aqui só carrega o
-    # perfil local de quem abriu o terminal.
+    # PowerShell only looks for the user profile in Documents. The "all users" profile
+    # lives in the PowerShell folder (Program Files) and here it only loads the local
+    # profile of whoever opened the terminal.
     $loader = Join-Path $PSHOME 'Microsoft.PowerShell_profile.ps1'
     $loaderLines = @(
         $marker
@@ -1023,16 +1023,16 @@ function Step-Profile {
             Write-Item Skip 'Carregador do perfil' 'já configurado'
         }
         else {
-            # Um perfil que já exista ali é mantido; o carregador entra no final
+            # A profile that already exists there is kept; the loader is appended at the end
             if ($loaderExists) { $loaderLines = @('') + $loaderLines }
             Add-Content -Path $loader -Value $loaderLines -Encoding utf8
             Write-Item Ok 'Carregador do perfil' $loader
         }
     }
     catch {
-        # PowerShell instalado por MSIX ou pela Microsoft Store: a pasta dele é somente
-        # leitura. O carregador (três linhas) vai para o perfil padrão, em Documentos; o
-        # perfil de verdade continua na pasta local.
+        # PowerShell installed via MSIX or the Microsoft Store: its folder is read-only.
+        # The loader (three lines) goes to the default profile, in Documents; the real
+        # profile stays in the local folder.
         try {
             if ((Test-Path $oldProfile) -and "$(Get-Content $oldProfile -Raw)".Contains($marker)) {
                 Write-Item Skip 'Carregador do perfil' 'já configurado'
@@ -1060,7 +1060,7 @@ function Step-GitHubTools {
 
     foreach ($tool in $GitHubTools) {
         $target = Join-Path $GitHubToolsDir "$($tool.Name).exe"
-        # A tag instalada fica ao lado do binário; só baixa de novo quando sai versão nova
+        # The installed tag is stored next to the binary; it only downloads again when a new version is out
         $versionFile = "$target.version"
         try {
             $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$($tool.Repo)/releases/latest" -Headers @{ Accept = 'application/vnd.github+json' }
@@ -1071,8 +1071,8 @@ function Step-GitHubTools {
             $asset = $release.assets | Where-Object name -match $tool.Asset | Select-Object -First 1
             if (-not $asset) { throw "nenhum asset de $($release.tag_name) casa com '$($tool.Asset)'" }
 
-            # Extrai/baixa direto no destino: mover um .exe recém-criado falha enquanto
-            # o antivírus ainda o examina
+            # Extracts/downloads straight into the destination: moving a freshly created .exe fails while
+            # the antivirus is still scanning it
             if ($asset.name -like '*.tar.gz') {
                 $download = Join-Path $env:TEMP $asset.name
                 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $download -ErrorAction Stop
@@ -1089,7 +1089,7 @@ function Step-GitHubTools {
             Write-Item Ok $tool.Name "$($release.tag_name) instalado"
         }
         catch {
-            # Já instalado: sem acesso ao GitHub, mantém a versão atual
+            # Already installed: without GitHub access, keep the current version
             if (Test-Path $target) {
                 $installed = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { 'versão instalada' }
                 Write-Item Warn $tool.Name "mantido $installed; não foi possível verificar versão nova ($($_.Exception.Message))"
@@ -1106,12 +1106,12 @@ function Step-Wsl {
     else { Write-Item Warn 'wsl --update' "retornou $LASTEXITCODE" }
     $null = & wsl.exe --set-default-version 2 2>&1
 
-    # O setup não instala nenhuma distro: o WSL só serve de motor ao Docker Desktop
+    # The setup installs no distro: WSL is only the engine behind Docker Desktop
     Write-Item Info 'Distros' 'nenhuma instalada pelo setup; o Docker Desktop cria a própria'
 }
 
 function Step-DockerDesktop {
-    # O Docker Desktop só aceita membros do grupo docker-users (criado pelo instalador)
+    # Docker Desktop only accepts members of the docker-users group (created by the installer)
     $member = "$env:USERDOMAIN\$env:USERNAME"
     try {
         $members = @(Get-LocalGroupMember -Group 'docker-users' -ErrorAction Stop | ForEach-Object Name)
@@ -1135,8 +1135,8 @@ function Step-WslConfig {
     $ramGB = [math]::Round($ComputerInfo.TotalPhysicalMemory / 1GB)
     $cpus = [int]$ComputerInfo.NumberOfLogicalProcessors
 
-    # Memória: -WslMemoryGB; no ROG Ally 25% da RAM (mínimo 4 GB); nos outros PCs
-    # $WslMemoryDefaultGB, sem passar da metade da RAM
+    # Memory: -WslMemoryGB; on the ROG Ally 25% of the RAM (minimum 4 GB); on other PCs
+    # $WslMemoryDefaultGB, never more than half the RAM
     $memoryGB = if ($WslMemoryGB) { $WslMemoryGB }
     elseif ($IsRogAlly) { [math]::Max($WslMemoryMinGB, [math]::Floor($ramGB * $WslMemoryShare)) }
     else { [math]::Max(2, [math]::Min($WslMemoryDefaultGB, [math]::Floor($ramGB / 2))) }
@@ -1159,10 +1159,10 @@ function Step-WslConfig {
             sparseVhd         = @('true', '# O disco virtual do WSL encolhe quando você apaga imagens e clusters.')
         }
     }
-    # No ROG Ally o WSL desliga quando ocioso, para não gastar RAM e bateria nos jogos
+    # On the ROG Ally WSL shuts down when idle, to save RAM and battery for games
     if ($IsRogAlly) { $settings['general'].Remove('instanceIdleTimeout') }
 
-    # Chaves que o setup não gerencia continuam no arquivo, na mesma seção
+    # Keys the setup does not manage stay in the file, in the same section
     $existing = [ordered]@{}
     $current = $null
     if (Test-Path $path) {
@@ -1206,13 +1206,13 @@ function Step-WslConfig {
     Write-Item Ok '.wslconfig' "rede espelhada, DNS e proxy do Windows, $memoryGB GB de $ramGB GB, $processors de $cpus processadores"
     Write-Item Info 'Aplicação' 'vale depois de wsl --shutdown (ou ao reiniciar)'
 }
-# Pergunta a versão do Windows, a menos que venha por -Versao. Enter aceita a
-# versão que corresponde à edição detectada.
+# Asks for the Windows version, unless it comes from -Versao. Enter accepts the
+# version that matches the detected edition.
 function Select-Edition {
     $detected = if ($HyperVAvailable) { 'Pro' } else { 'Home' }
     $choice = $Versao
     if ($choice -eq 'Perguntar') {
-        # Sem terminal interativo (agendador, pipeline) não há como perguntar
+        # Without an interactive terminal (scheduler, pipeline) there is no way to ask
         if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) { return $detected }
         $default = if ($detected -eq 'Pro') { '2' } else { '1' }
         Write-Host ''
@@ -1245,7 +1245,7 @@ function Select-Edition {
 }
 
 function Step-HyperV {
-    # Membros do grupo criam e controlam VMs sem abrir o terminal como administrador
+    # Group members create and control VMs without opening the terminal as administrator
     $member = "$env:USERDOMAIN\$env:USERNAME"
     try {
         $group = Get-LocalGroup -SID $HyperVAdminsSid
@@ -1259,11 +1259,11 @@ function Step-HyperV {
         }
     }
     catch {
-        # Máquinas gerenciadas podem controlar os grupos locais por política
+        # Managed machines may control local groups through policy
         Write-Item Warn 'Grupo Administradores do Hyper-V' $_.Exception.Message
     }
 
-    # Sem isso o Vagrant procura o VirtualBox, que não convive bem com o Hyper-V
+    # Without this Vagrant looks for VirtualBox, which does not get along with Hyper-V
     if ([Environment]::GetEnvironmentVariable('VAGRANT_DEFAULT_PROVIDER', 'User') -eq 'hyperv') {
         Write-Item Skip 'Vagrant usa o Hyper-V' 'já configurado'
     }
@@ -1280,7 +1280,7 @@ function Step-UpgradeAll {
 }
 
 # =============================================================================
-#  Execução
+#  Execution
 # =============================================================================
 
 $Edition = Select-Edition
